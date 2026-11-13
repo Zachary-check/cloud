@@ -1,7 +1,9 @@
 import { appendFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, desktopCapturer, nativeImage, screen } from 'electron'
+import { app, desktopCapturer, screen } from 'electron'
 import { captureWindowsScreen } from './capture-controller'
+import { cachedDisplayThumbnail, encodeCaptureFrame } from './capture/image-processing'
+import { settings } from './settings'
 export { cancelPendingCapture, getCaptureError } from './capture-controller'
 
 /**
@@ -12,13 +14,8 @@ export { cancelPendingCapture, getCaptureError } from './capture-controller'
  */
 const CAPTURE_TIMEOUT_MS = 15_000
 
-/** Width of the copy handed to the renderer for on-screen previews. */
-const DISPLAY_THUMBNAIL_WIDTH = 640
-
 /** Marker that the one-off capture benchmark has already run */
 const PROBE_MARKER = 'probe DONE'
-
-let cachedPreview: { image: string; preview: string } | null = null
 
 function perfLogPath(): string {
   return join(app.getPath('userData'), 'perf.log')
@@ -45,17 +42,7 @@ function traceCapture(message: string): void {
  * stays correct.
  */
 export function toDisplayThumbnail(base64Data: string): string {
-  if (cachedPreview?.image === base64Data) return cachedPreview.preview
-  try {
-    const image = nativeImage.createFromBuffer(Buffer.from(base64Data, 'base64'))
-    const { width } = image.getSize()
-    if (!width || width <= DISPLAY_THUMBNAIL_WIDTH) return base64Data
-    const preview = image.resize({ width: DISPLAY_THUMBNAIL_WIDTH }).toPNG().toString('base64')
-    cachedPreview = { image: base64Data, preview }
-    return preview
-  } catch {
-    return base64Data
-  }
+  return settings.showScreenshotPreview ? cachedDisplayThumbnail(base64Data) : ''
 }
 
 export function takeScreenshot(): Promise<string | void> {
@@ -72,20 +59,22 @@ export function takeScreenshot(): Promise<string | void> {
   }
   const capture = desktopCapturer
     .getSources({ types: ['screen'], thumbnailSize: { width, height } })
-    .then((sources) => {
+    .then(async (sources) => {
       const grabbedAt = Date.now()
       if (!sources.length) {
         traceCapture(`capture ${width}x${height} getSources=${grabbedAt - startedAt}ms empty`)
         return undefined
       }
-      const screenshot = sources[0]?.thumbnail.toPNG()
-      const encodedAt = Date.now()
-      const base64Data = screenshot.toString('base64')
+      const image = sources[0].thumbnail
+      const size = image.getSize()
+      const base64Data = await encodeCaptureFrame(
+        { pixels: image.toBitmap(), ...size, stride: size.width * 4 },
+        settings.showScreenshotPreview
+      )
       const convertedAt = Date.now()
       traceCapture(
         `capture ${width}x${height} getSources=${grabbedAt - startedAt}ms ` +
-          `toPNG=${encodedAt - grabbedAt}ms base64=${convertedAt - encodedAt}ms ` +
-          `bytes=${screenshot.length} total=${convertedAt - startedAt}ms`
+          `workerEncode=${convertedAt - grabbedAt}ms total=${convertedAt - startedAt}ms`
       )
       return base64Data
     })

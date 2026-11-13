@@ -1,5 +1,6 @@
-import { app, ipcMain, nativeImage } from 'electron'
-import { appendFileSync, existsSync } from 'node:fs'
+import { app, ipcMain } from 'electron'
+import { existsSync } from 'node:fs'
+import { appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createNativeBackend } from './capture/native-backend'
 import { createCaptureService, type CaptureBackend } from './capture/service'
@@ -11,11 +12,17 @@ import {
 } from '../shared/capture'
 import { takeWindowsScreenshot } from './windows-screenshot'
 import {
+  closeImageProcessing,
+  decodeCapturePng,
+  encodeCaptureFrame
+} from './capture/image-processing'
+import {
   closeNativeOverlay,
   nativeAnswerEvent,
   nativeExecutable,
   nativeOverlayActive,
-  openNativeOverlay
+  openNativeOverlay,
+  setNativeOverlayAppearance
 } from './native-overlay'
 
 let status: CaptureStatus = { attempts: [], running: false, nativeWindow: false }
@@ -55,14 +62,7 @@ function getBackend(): CaptureBackend {
       const { screen } = await import('electron')
       const { width, height } = screen.getPrimaryDisplay().size
       const result = await takeWindowsScreenshot(width, height)
-      const image = nativeImage.createFromBuffer(Buffer.from(result.image, 'base64'))
-      const size = image.getSize()
-      return {
-        pixels: image.toBitmap(),
-        width: size.width,
-        height: size.height,
-        stride: size.width * 4
-      }
+      return decodeCapturePng(Buffer.from(result.image, 'base64'), request.signal)
     }
   }
   return backend
@@ -71,22 +71,15 @@ function getEngine() {
   engine ??= createCaptureService({
     backend: getBackend(),
     getSettings: async () => normalizeCaptureSettings(settings),
-    async encode(frame) {
-      return nativeImage
-        .createFromBitmap(Buffer.from(frame.pixels), {
-          width: frame.width,
-          height: frame.height,
-          scaleFactor: 1
-        })
-        .toPNG()
-        .toString('base64')
+    async encode(frame, signal) {
+      return encodeCaptureFrame(frame, settings.showScreenshotPreview, signal)
     },
     log(attempt) {
       try {
-        appendFileSync(
+        void appendFile(
           join(app.getPath('userData'), 'capture.log'),
           JSON.stringify({ at: new Date().toISOString(), ...attempt }) + '\n'
-        )
+        ).catch(() => {})
       } catch {
         /* Diagnostics must never break capture. */
       }
@@ -157,12 +150,14 @@ export function initCaptureController(): void {
   )
   ipcMain.handle('capture:open-native', async () => {
     if (!settings.apiKey) throw new Error('请先填写 AI API Key')
+    setNativeOverlayAppearance(settings.textOnlyAnswers)
     await openNativeOverlay(settings.toolbarHoverDelay)
     global.mainWindow?.hide()
   })
   ipcMain.handle('capture:close-native', () => closeNativeOverlay())
   app.on('before-quit', () => {
     cancelPendingCapture()
+    closeImageProcessing()
     closeNativeOverlay(true)
   })
 }

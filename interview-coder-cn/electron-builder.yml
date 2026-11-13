@@ -33,6 +33,7 @@ files:
   - '!tests/**'
   - '!docs/**'
   - '!.workbuddy/**'
+  - '!.cache/**'
   - '!{AGENTS.md,CLAUDE.md,components.json}'
 # 只保留中文与英文语言包。Electron 默认附带 55 个 locale，共 43 MB，
 # 其中 54 个在本应用里永远不会被加载。

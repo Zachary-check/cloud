@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "background.h"
 
 // This helper owns no credentials, never connects to the network, and returns
 // frame pixels through a caller-owned temporary file rather than stdout.
@@ -90,7 +91,9 @@ bool bitmapCapture(RECT rect, HWND window, Image& image,std::string& error) {
   HBITMAP bitmap=memory?CreateDIBSection(screen,&info,DIB_RGB_COLORS,&pixels,nullptr,0):nullptr;
   if(!bitmap) { if(memory) DeleteDC(memory); ReleaseDC(nullptr,screen); error="CreateDIBSection failed"; return false; }
   HGDIOBJ previous=SelectObject(memory,bitmap); memset(pixels,0,image.pixels.size());
-  BOOL ok=window?PrintWindow(window,memory,3):BitBlt(memory,0,0,image.width,image.height,screen,rect.left,rect.top,SRCCOPY|CAPTUREBLT);
+  // Protected targets have their own reconstruction routes. Including every
+  // layered overlay here forces extra desktop composition on each screenshot.
+  BOOL ok=window?PrintWindow(window,memory,3):BitBlt(memory,0,0,image.width,image.height,screen,rect.left,rect.top,SRCCOPY);
   GdiFlush();
   if(ok) memcpy(image.pixels.data(),pixels,image.pixels.size());
   SelectObject(memory,previous); DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(nullptr,screen);
@@ -270,6 +273,7 @@ Options parse(int argc,wchar_t** argv) {
     const std::wstring key=argv[i];
     if(key==L"--capabilities") result.command=L"capabilities";
     else if(key==L"--snapshot") result.command=L"snapshot";
+    else if(key==L"--watch-background") result.command=L"background";
     else if(i+1<argc) {
       const std::wstring value=argv[++i];
       if(key==L"--mode") result.mode=value;
@@ -287,6 +291,20 @@ int run(const Options& options) {
   auto awareness=reinterpret_cast<DpiAwarenessFunction>(GetProcAddress(GetModuleHandleW(L"user32.dll"),"SetProcessDpiAwarenessContext"));
   if(!awareness||!awareness(reinterpret_cast<HANDLE>(-4))) SetProcessDPIAware();
   InputDesktop desktop;
+  if(options.command==L"background") {
+    std::string line; bool light=true;
+    while(std::getline(std::cin,line)) {
+      if(line=="stop") break;
+      if(line.size()>160) return 1;
+      std::istringstream input(line); long long x=0,y=0,width=0,height=0;
+      if(!(input>>x>>y>>width>>height)||x<-131072||y<-131072||x>131072||y>131072||width<1||height<1||width>32768||height>32768) return 1;
+      InputDesktop current;
+      const auto sample=sampleBackground({static_cast<LONG>(x),static_cast<LONG>(y),static_cast<LONG>(x+width),static_cast<LONG>(y+height)},light);
+      if(sample.ok) light=sample.light;
+      std::cout << "{\"ok\":" << (sample.ok?"true":"false") << ",\"theme\":\"" << (light?"light":"dark") << "\"}\n" << std::flush;
+    }
+    return 0;
+  }
   std::vector<Display> displays; EnumDisplayMonitors(nullptr,nullptr,monitors,reinterpret_cast<LPARAM>(&displays));
   if(options.command==L"capabilities") {
     std::cout << "{\"ok\":true,\"protocol\":1,\"windowsBuild\":" << windowsBuild() <<

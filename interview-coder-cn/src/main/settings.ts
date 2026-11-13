@@ -18,6 +18,7 @@ import {
 import type { PinnedProjectRule } from '../shared/pinned-project'
 import { DEFAULT_INTERVIEW_TRIGGER_MUTE_MS } from '../shared/interview-trigger'
 import { normalizeCaptureSettings } from '../shared/capture'
+import { setNativeOverlayAppearance } from './native-overlay'
 
 ipcMain.handle('getAppSettings', () => {
   return settings
@@ -28,6 +29,9 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   const previousDashscopeApiKey = settings.dashscopeApiKey
   Object.assign(settings, _settings)
   Object.assign(settings, normalizeCaptureSettings(settings))
+  settings.textOnlyAnswers = settings.textOnlyAnswers !== false
+  settings.showScreenshotPreview = settings.showScreenshotPreview === true
+  if ('textOnlyAnswers' in _settings) setNativeOverlayAppearance(settings.textOnlyAnswers)
   if ('hideDockIcon' in _settings) {
     applyDockVisibility(settings.hideDockIcon)
   }
@@ -155,6 +159,8 @@ export const settings = {
   codeLanguage: '',
   /** Kept in sync with the renderer so the overlay toolbar can match the main window */
   opacity: 0.8,
+  textOnlyAnswers: true,
+  showScreenshotPreview: false,
   /**
    * Dwell time in ms before hovering a toolbar button fires it; 0 disables hover
    * triggering. The real default lives in the renderer store: App.tsx fills blank

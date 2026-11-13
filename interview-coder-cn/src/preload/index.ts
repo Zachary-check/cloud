@@ -8,6 +8,11 @@ import type { CaptureCapabilities, CaptureStatus } from '../shared/capture'
 
 // Custom APIs for renderer
 const api = {
+  getBackgroundTheme: () => ipcRenderer.invoke('appearance:theme') as Promise<'light' | 'dark'>,
+  onBackgroundTheme: (callback: (theme: 'light' | 'dark') => void) => {
+    ipcRenderer.on('background-theme', (_event, theme) => callback(theme))
+  },
+  removeBackgroundThemeListener: () => ipcRenderer.removeAllListeners('background-theme'),
   getCaptureInfo: () =>
     ipcRenderer.invoke('capture:info') as Promise<{
       capabilities: CaptureCapabilities

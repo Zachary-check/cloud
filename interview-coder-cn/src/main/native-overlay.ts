@@ -10,6 +10,10 @@ let answer = ''
 let timer: ReturnType<typeof setTimeout> | null = null
 let closingApp = false
 let ready = false
+let closing = false
+let blocked = false
+let textOnly = true
+const outbox = new Map<string, string>()
 let trigger: (action: string) => void = () => {}
 let reveal: () => void = () => {}
 
@@ -23,15 +27,30 @@ export function initNativeOverlay(onAction: (action: string) => void, onClose: (
   reveal = onClose
 }
 export function nativeOverlayActive(): boolean {
-  return ready && !!child
+  return ready && !!child && !closing
 }
 function write(command: string, value: string): void {
   if (!child?.stdin.writable || !ready) return
+  outbox.set(command, value.slice(-64000))
+  flush()
+}
+function flush(): void {
+  if (!child?.stdin.writable || !ready || closing || blocked) return
   try {
-    child.stdin.write(`${command} ${Buffer.from(value.slice(-64000), 'utf8').toString('base64')}\n`)
+    for (const [command, value] of outbox) {
+      outbox.delete(command)
+      if (!child.stdin.write(`${command} ${Buffer.from(value, 'utf8').toString('base64')}\n`)) {
+        blocked = true
+        break
+      }
+    }
   } catch {
     /* Process exit owns cleanup. */
   }
+}
+export function setNativeOverlayAppearance(enabled: boolean): void {
+  textOnly = enabled
+  write('appearance', enabled ? 'text' : 'panel')
 }
 export function nativeAnswerEvent(kind: 'clear' | 'chunk' | 'status', text = ''): void {
   if (kind === 'status') {
@@ -39,6 +58,7 @@ export function nativeAnswerEvent(kind: 'clear' | 'chunk' | 'status', text = '')
     return
   }
   answer = kind === 'clear' ? '' : (answer + text).slice(-64000)
+  if (!nativeOverlayActive()) return
   if (timer) return
   timer = setTimeout(() => {
     timer = null
@@ -51,8 +71,16 @@ export async function openNativeOverlay(hoverMs: number): Promise<void> {
   const executable = nativeExecutable('answer-overlay')
   if (process.platform !== 'win32' || !existsSync(executable))
     throw new Error('原生答题窗仅在包含原生组件的 Windows 版本中提供')
+  closingApp = false
   opening = new Promise<void>((resolve, reject) => {
-    const process = spawn(executable, ['--hover-ms', String(hoverMs || 1200)], {
+    const previous = child
+    child = null
+    ready = false
+    closing = false
+    blocked = false
+    outbox.clear()
+    previous?.kill()
+    const process = spawn(executable, ['--hover-ms', String(hoverMs ?? 1200)], {
       windowsHide: true,
       env: nativeEnvironment(),
       stdio: ['pipe', 'pipe', 'pipe']
@@ -72,6 +100,11 @@ export async function openNativeOverlay(hoverMs: number): Promise<void> {
       else resolve()
     }
     process.stdin.on('error', () => {})
+    process.stdin.on('drain', () => {
+      if (child !== process) return
+      blocked = false
+      flush()
+    })
     process.stderr.on('data', () => {})
     process.on('error', (error) => settle(error))
     process.on('close', () => {
@@ -79,11 +112,14 @@ export async function openNativeOverlay(hoverMs: number): Promise<void> {
       if (child === process) {
         child = null
         ready = false
+        blocked = false
+        outbox.clear()
       }
       settle(new Error('原生答题窗已退出'))
       if (wasReady && !closingApp) reveal()
     })
     process.stdout.on('data', (chunk) => {
+      if (child !== process || closing) return
       buffer += String(chunk)
       if (buffer.length > 32768) {
         process.kill()
@@ -99,6 +135,7 @@ export async function openNativeOverlay(hoverMs: number): Promise<void> {
             ready = true
             settle()
             write('text', answer)
+            write('appearance', textOnly ? 'text' : 'panel')
             write('status', '截题、加页与 AI 配置沿用工作台；悬停或点击按钮操作')
           } else if (event === 'copy') {
             clipboard.writeText(answer.match(/```[^\n]*\n([\s\S]*?)```/)?.[1]?.trim() || answer)
@@ -121,10 +158,17 @@ export function closeNativeOverlay(quit = false): void {
     clearTimeout(timer)
     timer = null
   }
-  child?.stdin.end('stop\n')
+  closing = true
+  outbox.clear()
+  try {
+    child?.stdin.end('stop\n')
+  } catch {
+    child?.kill()
+  }
   const current = child
   if (current) {
     const deadline = setTimeout(() => current.kill(), 1000)
     deadline.unref()
+    current.once('close', () => clearTimeout(deadline))
   }
 }

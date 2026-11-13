@@ -119,8 +119,8 @@ export function createWindow(): void {
       if (
         !restoringTopmost &&
         !isAlwaysOnTop &&
-        mainWindow.isVisible() &&
-        !mainWindow.isDestroyed()
+        !mainWindow.isDestroyed() &&
+        mainWindow.isVisible()
       ) {
         // Only re-set the flag; avoid moveTop() to not disturb other window focus
         // Some window managers synchronously reject the change and emit false

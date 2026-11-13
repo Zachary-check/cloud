@@ -39,7 +39,7 @@ export function createCaptureService({
   log = () => {}
 }: {
   backend: CaptureBackend
-  encode(frame: CaptureFrame): Promise<string>
+  encode(frame: CaptureFrame, signal: AbortSignal): Promise<string>
   getSettings(): Promise<CaptureSettings>
   log?(entry: CaptureAttempt): void
 }) {
@@ -117,7 +117,7 @@ export function createCaptureService({
               if (preferred.get(cacheKey) === mode) preferred.delete(cacheKey)
               continue
             }
-            const image = await encode(frame)
+            const image = await encode(frame, signal)
             checkCurrent(id, signal)
             preferred.set(cacheKey, mode)
             return { image, mode, platform, quality, diagnostics }

@@ -48,6 +48,7 @@ async function setup(platform, getSources = () => assert.fail('No screen enumera
     './settings': { applyDockVisibility: noop },
     './interview-record': { finalizeInterviewRecord: noop },
     './capture-controller': { initCaptureController: noop },
+    './background-appearance': { initBackgroundAppearance: noop },
     './native-overlay': { initNativeOverlay: noop },
     './take-screenshot': { scheduleCaptureProbe: noop }
   }

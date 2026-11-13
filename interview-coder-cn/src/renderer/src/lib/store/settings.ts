@@ -124,6 +124,10 @@ interface Settings extends CaptureSettings {
   activeSceneId: string
 
   opacity: number
+  /** Transparent answer surfaces with locally sampled contrasting text. */
+  textOnlyAnswers: boolean
+  /** Generate and display screenshot previews; never changes the image sent to AI. */
+  showScreenshotPreview: boolean
   /** Allow resizing the main window and overlay toolbar */
   resizable: boolean
   /** Show the click-through overlay toolbar above the main window */
@@ -182,6 +186,8 @@ const defaultSettings: Settings = {
   activeSceneId: CODING_SCENE_ID,
 
   opacity: 0.8,
+  textOnlyAnswers: true,
+  showScreenshotPreview: false,
   resizable: true,
   showOverlayToolbar: true,
   toolbarHoverDelay: 1000,

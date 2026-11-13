@@ -5,8 +5,8 @@ on:
     branches:
       - work/integrated-assistant
     paths:
-      - '.github/workflows/fusion-windows.yml'
-      - 'interview-coder-cn/**'
+      - ".github/workflows/fusion-windows.yml"
+      - "interview-coder-cn/**"
   workflow_dispatch:
 
 permissions:
@@ -40,6 +40,12 @@ jobs:
       - name: Build Windows x64 package
         run: npm run build:win -- --publish never
 
+      - name: Smoke check Windows native components
+        run: node scripts/windows-native-smoke.cjs
+
+      - name: Smoke check Electron UI and image worker
+        run: node -e "const r=require('node:child_process').spawnSync(require('electron'),['scripts/electron-smoke.cjs'],{stdio:'inherit',timeout:60000});process.exit(r.status??1)"
+
       - name: Verify native components and include release instructions
         shell: pwsh
         run: |
@@ -52,13 +58,14 @@ jobs:
           }
           Copy-Item LICENSE dist/win-unpacked/LICENSE.txt
           Copy-Item FUSION.md dist/win-unpacked/FUSION.md
+          Copy-Item STABILITY.md dist/win-unpacked/STABILITY.md
           Copy-Item BUILD-INFO.json dist/win-unpacked/BUILD-INFO.json
 
       - name: Upload runnable Windows package
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: interview-coder-cn-2.2.0-fusion-win-x64
+          name: interview-coder-cn-2.2.1-fusion-win-x64
           path: interview-coder-cn/dist/win-unpacked/
           if-no-files-found: error
           compression-level: 6

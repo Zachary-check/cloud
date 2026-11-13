@@ -17,7 +17,14 @@ const METHOD_NAMES: Record<CaptureMethod, string> = {
   printWindow: '窗口绘制'
 }
 export function CaptureSettingsCard() {
-  const { capturePlatform, captureMethod, captureDisplay, updateSetting } = useSettingsStore()
+  const {
+    capturePlatform,
+    captureMethod,
+    captureDisplay,
+    textOnlyAnswers,
+    showScreenshotPreview,
+    updateSetting
+  } = useSettingsStore()
   const [info, setInfo] = useState<{
     capabilities: CaptureCapabilities
     status: CaptureStatus
@@ -126,6 +133,38 @@ export function CaptureSettingsCard() {
         采集，国考云与易考优先尝试共享表面。遇到黑屏会自动尝试其他方式，仍无法读取时会停止本次 AI
         请求。兼容效果需要在对应客户端和电脑上实际验证。
       </p>
+      <div className="space-y-3 border-t border-gray-100 pt-4">
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            aria-label="纯文字答案"
+            className="mt-1"
+            checked={textOnlyAnswers}
+            onChange={(event) => updateSetting('textOnlyAnswers', event.target.checked)}
+          />
+          <span>
+            纯文字答案
+            <span className="mt-1 block text-xs leading-relaxed text-gray-500">
+              主工作台与原生笔试窗均使用透明背景，按下方背景明暗自动切换字色。关闭后恢复面板背景。
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            aria-label="显示截图缩略图"
+            className="mt-1"
+            checked={showScreenshotPreview}
+            onChange={(event) => updateSetting('showScreenshotPreview', event.target.checked)}
+          />
+          <span>
+            显示截图缩略图
+            <span className="mt-1 block text-xs leading-relaxed text-gray-500">
+              默认关闭，减少截图后的处理量；开启后从下一次截图开始展示。发送给 AI 的仍是完整截图。
+            </span>
+          </span>
+        </label>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"

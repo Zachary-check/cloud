@@ -8,9 +8,7 @@ import {
   hideToolbar,
   setToolbarWanted,
   reassertToolbarTopMost,
-  isToolbarAvailable,
-  suspendCursorTracking,
-  resumeCursorTracking
+  isToolbarAvailable
 } from './toolbar-window'
 import { clampPositionToDisplays, ensureWindowOnScreen } from './window-placement'
 import {
@@ -327,7 +325,7 @@ function keepWindowInFront(window: BrowserWindow) {
 
   const start = Date.now()
   const reassert = (aggressive = false) => {
-    if (!window.isVisible() || window.isDestroyed()) return false
+    if (window.isDestroyed() || !window.isVisible()) return false
     applyTopMost(window, aggressive)
     return true
   }
@@ -361,12 +359,33 @@ function adjustOpacity(delta: number) {
 }
 
 let captureSequence = 0
+let pendingCaptureId: number | null = null
 function abortCurrentStream(reason: AbortReason) {
   captureSequence++
+  pendingCaptureId = null
   cancelPendingCapture()
-  if (!currentStreamContext) return
-  currentStreamContext.reason = reason
-  currentStreamContext.controller.abort()
+  const stream = currentStreamContext
+  currentStreamContext = null
+  if (!stream) return
+  stream.reason = reason
+  stream.controller.abort()
+}
+
+async function captureForRequest(id: number): Promise<string | void> {
+  pendingCaptureId = id
+  try {
+    return await takeScreenshot()
+  } catch (error) {
+    console.error('Screenshot request failed:', error)
+    return undefined
+  } finally {
+    if (pendingCaptureId === id) pendingCaptureId = null
+  }
+}
+
+export function shutdownActiveRequests(): void {
+  interviewRequestSequence++
+  abortCurrentStream('new-request')
 }
 
 /**
@@ -481,7 +500,7 @@ async function handleInterviewTranscript(transcript: string) {
 
   let screenshotData: string | null = null
   if (settings.interviewIncludeScreenshot) {
-    const capturedScreenshot = await takeScreenshot()
+    const capturedScreenshot = await captureForRequest(captureSequence)
     if (capturedScreenshot) {
       screenshotData = capturedScreenshot
       saveScreenshotToDisk(screenshotData)
@@ -533,7 +552,7 @@ async function handleInterviewTranscript(transcript: string) {
   if (screenshotData) {
     // Previews go out downscaled: the model already has the full image
     const displayShot = toDisplayThumbnail(screenshotData)
-    recentScreenshots.push(displayShot)
+    if (displayShot) recentScreenshots.push(displayShot)
     recentScreenshots = recentScreenshots.slice(-5)
     mainWindow.webContents.send('screenshot-taken', displayShot)
     mainWindow.webContents.send('screenshots-updated', recentScreenshots)
@@ -670,20 +689,11 @@ const callbacks: Record<string, () => void> = {
     abortCurrentStream('new-request')
     const captureId = captureSequence
     const isDualMode = settings.workMode === 'dual'
-    // The capture is encoded on this thread, so show the spinner *before*
-    // awaiting it: a hover-triggered screenshot otherwise looks like the bar did
-    // nothing at all, while the app is in fact blocked for that whole time.
+    // Show capture feedback immediately; pixel processing runs in a worker.
     mainWindow.webContents.send('ai-loading-start')
     // Already on, so the finally block below has to close it on every path
     const loadingStarted = true
-    // Samples taken while the main thread is blocked would arrive in one burst
-    suspendCursorTracking()
-    let screenshotData: string | void
-    try {
-      screenshotData = await takeScreenshot()
-    } finally {
-      resumeCursorTracking()
-    }
+    const screenshotData = await captureForRequest(captureId)
     if (captureId !== captureSequence) return
     if (!screenshotData) {
       // Never fail silently: the shortcut would look like it did nothing at all
@@ -728,7 +738,7 @@ const callbacks: Record<string, () => void> = {
         reason: null
       }
       currentStreamContext = streamContext
-      recentScreenshots = [toDisplayThumbnail(screenshotData)]
+      recentScreenshots = [toDisplayThumbnail(screenshotData)].filter(Boolean)
       hasAppendSeparator = false
       publishSolution(mainWindow, 'clear')
       // This action is labelled "新开对话" and resets the model-side history just
@@ -806,13 +816,14 @@ const callbacks: Record<string, () => void> = {
           mainWindow.webContents.send('solution-error', extractErrorMessage(error))
         }
       } finally {
-        if (currentStreamContext === streamContext) {
+        const isLatestStream = currentStreamContext === streamContext
+        if (isLatestStream) {
           currentStreamContext = null
         }
         if (!streamStarted && streamContext.reason === 'user') {
           mainWindow.webContents.send('solution-stopped')
         }
-        if (loadingStarted && mainWindow && !mainWindow.isDestroyed()) {
+        if (loadingStarted && isLatestStream && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('ai-loading-end')
         }
         sendTurnEnd(
@@ -842,20 +853,12 @@ const callbacks: Record<string, () => void> = {
 
     abortCurrentStream('new-request')
     const captureId = captureSequence
-    // Same reason as takeScreenshot: the capture blocks this thread for about a
-    // second, so the spinner has to be up *before* awaiting it — otherwise an
-    // append looks like the shortcut did nothing until the answer starts.
+    // Keep feedback and pointer polling active throughout asynchronous capture.
     mainWindow.webContents.send('ai-loading-start')
     // Already on, so every failure path below owes an ai-loading-end
     const loadingStarted = true
 
-    suspendCursorTracking()
-    let screenshotData: string | void
-    try {
-      screenshotData = await takeScreenshot()
-    } finally {
-      resumeCursorTracking()
-    }
+    const screenshotData = await captureForRequest(captureId)
     if (captureId !== captureSequence) return
     if (!screenshotData) {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -900,7 +903,7 @@ const callbacks: Record<string, () => void> = {
       currentStreamContext = streamContext
 
       const displayShot = toDisplayThumbnail(screenshotData)
-      recentScreenshots.push(displayShot)
+      if (displayShot) recentScreenshots.push(displayShot)
       recentScreenshots = recentScreenshots.slice(-5) // 限5张
       if (settings.workMode === 'interview') {
         publishSolution(mainWindow, 'clear')
@@ -989,13 +992,14 @@ const callbacks: Record<string, () => void> = {
           mainWindow.webContents.send('solution-error', extractErrorMessage(error))
         }
       } finally {
-        if (currentStreamContext === streamContext) {
+        const isLatestStream = currentStreamContext === streamContext
+        if (isLatestStream) {
           currentStreamContext = null
         }
         if (!streamStarted && streamContext.reason === 'user') {
           mainWindow.webContents.send('solution-stopped')
         }
-        if (loadingStarted && mainWindow && !mainWindow.isDestroyed()) {
+        if (loadingStarted && isLatestStream && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('ai-loading-end')
         }
         if (turnId) {
@@ -1012,7 +1016,14 @@ const callbacks: Record<string, () => void> = {
 
   // Stop current AI solution stream
   stopSolutionStream: () => {
+    interviewRequestSequence++
     abortCurrentStream('user')
+    const window = global.mainWindow
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('solution-stopped')
+      window.webContents.send('ai-loading-end')
+    }
+    nativeAnswerEvent('status', '已停止本次请求；可以重新截题')
   },
 
   ignoreOrEnableMouse: () => {
@@ -1214,8 +1225,8 @@ ipcMain.handle('updateShortcuts', (_event, _shortcuts: { action: string; key: st
 })
 
 ipcMain.handle('stopSolutionStream', () => {
-  if (!currentStreamContext) return false
-  abortCurrentStream('user')
+  if (!currentStreamContext && pendingCaptureId === null) return false
+  callbacks.stopSolutionStream()
   return true
 })
 
@@ -1375,6 +1386,7 @@ export function triggerNativeAction(action: string): void {
   if (mapped) callbacks[mapped]?.()
 }
 function publishSolution(window: BrowserWindow, kind: 'clear' | 'chunk', text = ''): void {
+  if (window.isDestroyed()) return
   if (kind === 'clear') window.webContents.send('solution-clear')
   else window.webContents.send('solution-chunk', text)
   nativeAnswerEvent(kind, text)

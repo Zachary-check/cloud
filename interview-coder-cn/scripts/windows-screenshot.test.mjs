@@ -102,7 +102,9 @@ function screenshotModule(capture) {
       },
       './capture-controller': {
         captureWindowsScreen: async () => (await capture(2195, 1235))?.image
-      }
+      },
+      './settings': { settings: { showScreenshotPreview: true } },
+      './capture/image-processing': { cachedDisplayThumbnail: () => 'cached-preview' }
     },
     {
       global: { mainWindow: { isDestroyed: () => false } },
@@ -119,8 +121,8 @@ test('Windows capture uses the compatibility controller and keeps preview data v
     return { ...result, preview: 'cached-preview' }
   })
   assert.equal(await capture.takeScreenshot(), image)
-  assert.equal(capture.toDisplayThumbnail(image), image)
-  assert.equal(capture.toDisplayThumbnail(image), image)
+  assert.equal(capture.toDisplayThumbnail(image), 'cached-preview')
+  assert.equal(capture.toDisplayThumbnail(image), 'cached-preview')
   capture.scheduleCaptureProbe()
 })
 
