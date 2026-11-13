@@ -1,0 +1,78 @@
+name: Fusion Windows x64 package
+
+on:
+  push:
+    branches:
+      - work/integrated-assistant
+    paths:
+      - '.github/workflows/fusion-windows.yml'
+      - 'interview-coder-cn/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fusion-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: interview-coder-cn
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: interview-coder-cn/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows x64 package
+        run: npm run build:win -- --publish never
+
+      - name: Verify native components and include release instructions
+        shell: pwsh
+        run: |
+          $info = Get-Content BUILD-INFO.json -Raw | ConvertFrom-Json
+          foreach ($name in @('capture-helper.exe', 'answer-overlay.exe')) {
+            $actual = (Get-FileHash "dist/win-unpacked/resources/native/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $info.native_components.$name) {
+              throw "Native component hash mismatch: $name"
+            }
+          }
+          Copy-Item LICENSE dist/win-unpacked/LICENSE.txt
+          Copy-Item FUSION.md dist/win-unpacked/FUSION.md
+          Copy-Item BUILD-INFO.json dist/win-unpacked/BUILD-INFO.json
+
+      - name: Upload runnable Windows package
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: interview-coder-cn-2.2.0-fusion-win-x64
+          path: interview-coder-cn/dist/win-unpacked/
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
+
+      - name: Add download instructions
+        shell: pwsh
+        run: |
+          @"
+          ## Windows x64 运行包
+          [下载运行包](${{ steps.upload.outputs.artifact-url }})
+
+          登录 GitHub 后下载 ZIP，完整解压并运行其中的 截屏解题助手.exe。
+          AI 配置仍在「设置 → AI 设置」。
+
+          已在 Windows runner 完成打包与原生组件校验；三个考试客户端的兼容效果仍需实际验证。
+          "@ >> $env:GITHUB_STEP_SUMMARY

@@ -4,6 +4,8 @@
 
 ## Windows 使用
 
+仓库的 [Windows 自动构建](https://github.com/Zachary-check/cloud/actions/workflows/fusion-windows.yml) 页面提供运行包：登录 GitHub，打开最新成功的构建，在 Artifacts 中下载 `interview-coder-cn-2.2.0-fusion-win-x64`。下载得到的 ZIP 可以直接完整解压运行。构建附件保留 30 天，可通过重新构建刷新。
+
 1. 将 `interview-coder-cn-2.2.0-fusion-win-x64.zip` 完整解压到一个目录，运行其中的 `截屏解题助手.exe`。不要只移动 EXE；`resources/native` 中两个组件须随整个目录保留。
 2. 在「设置 → AI 设置」填写自己的 API Base URL、API Key 和模型名。备用模型仍可只填写模型名，或单独填写另一套端点与 Key；本版不需要面灵账号。
 3. 「截图与客户端兼容」默认自动识别。也可以明确选择通用、时习知、国考云、易考锁屏客户端，并选择题目所在显示器。
