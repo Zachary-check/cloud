@@ -212,6 +212,22 @@
   @apply relative size-7 shrink-0 cursor-default overflow-hidden hover:bg-white/15 hover:text-white;
 }
 
+.overlay-toolbar.text-only-mode button {
+  background: transparent !important;
+  color: var(--answer-foreground) !important;
+  transition: none;
+}
+.overlay-toolbar button,
+.overlay-toolbar svg {
+  opacity: 1;
+}
+.overlay-toolbar.text-only-mode svg {
+  filter: drop-shadow(0 0 1px var(--answer-halo));
+}
+.overlay-toolbar.text-only-mode .dwell-progress {
+  background: currentColor;
+}
+
 /* Fills up over the dwell time, so hover-to-trigger is visible before it fires */
 .dwell-progress {
   @apply pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-white/80;

@@ -1,9 +1,9 @@
 {
-  "version": "2.2.1",
-  "base_commit": "9cd5300ee71c5e2b9a44191fdfe99e464b0b92a2",
+  "version": "2.2.2",
+  "base_commit": "ce9b8f0ef2179f0609e6998d9f4aae39c1b5efdf",
   "electron_version": "37.3.1",
   "native_compiler": "Zig 0.13.0, x86_64-windows-gnu, C++17",
-  "automated_tests": 153,
+  "automated_tests": 24,
   "ui_smoke": {
     "launch": true,
     "capture_settings": true,
@@ -13,11 +13,20 @@
     "preview_setting": true,
     "transparent_answers": true,
     "contrasting_themes": true,
-    "image_worker_in_asar": true
+    "image_worker_in_asar": true,
+    "transparent_toolbar": true,
+    "toolbar_read_only": true,
+    "toolbar_icons_after_idle": true,
+    "toolbar_valid_size_after_idle": true
   },
   "windows_validation": "See GitHub Actions for Windows packaging, native startup/update/exit and Electron UI smoke results; real exam clients not tested",
   "native_components": {
     "answer-overlay.exe": "d649c16197c8a88c04b1447af1417c5d06d79b2ac08c907938b586b320404837",
     "capture-helper.exe": "3fc84919ac9f705468025e5c2b858cb9fdbfad08c52c38bb325d54913e770214"
+  },
+  "automated_test_scope": "Toolbar hover, appearance, startup isolation, repaint scheduling, display-metric recovery and background-region sampling",
+  "baseline_full_regression": {
+    "version": "2.2.1",
+    "passed": 153
   }
 }

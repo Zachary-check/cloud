@@ -23,15 +23,20 @@ function setup() {
   const handles = new Map()
   const hotkeys = new Map()
   let cursor = { x: 1900, y: 1100 }
+  let workArea = { x: 0, y: 0, width: 2000, height: 1200 }
   class FakeWindow extends EventEmitter {
     visible = false
     topmost = true
     bounds = { x: 200, y: 200, width: 900, height: 670 }
     nativeTopmostCalls = 0
     moveTopCalls = 0
+    repaintCalls = 0
     opacity = 1
     sent = []
-    webContents = { send: (...args) => this.sent.push(args) }
+    webContents = Object.assign(new EventEmitter(), {
+      send: (...args) => this.sent.push(args),
+      invalidate: () => this.repaintCalls++
+    })
     constructor() {
       super()
       windows.push(this)
@@ -104,9 +109,10 @@ function setup() {
   }
   const mainWindow = new FakeWindow()
   const screen = {
-    getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 2000, height: 1200 } }),
+    getDisplayMatching: () => ({ workArea }),
     getAllDisplays: () => [{ bounds: { x: 0, y: 0, width: 2000, height: 1200 } }],
-    getCursorScreenPoint: () => cursor
+    getCursorScreenPoint: () => cursor,
+    dipToScreenRect: (_window, bounds) => bounds
   }
   function load(file, dependencies) {
     const exports = {}
@@ -186,6 +192,9 @@ function setup() {
     toggle: () => hotkeys.get('Control+H')(),
     moveCursor: (point) => {
       cursor = point
+    },
+    setWorkArea: (area) => {
+      workArea = area
     }
   }
 }
@@ -273,4 +282,54 @@ test('compact toolbar still publishes OS hover samples while native mouse input 
   h.moveCursor({ x: h.bar.bounds.x + 140, y: h.bar.bounds.y + 20 })
   h.advance(100)
   assert.equal(h.bar.sent.filter(([name]) => name === 'toolbar-cursor').at(-1)[1], null)
+})
+
+test('repeated settings sync and idle repaint never lower toolbar alpha or steal focus', async () => {
+  const h = setup()
+  await h.toggle()
+  const topmostCalls = h.bar.nativeTopmostCalls
+  const moves = h.bar.moveTopCalls
+  const repaints = h.bar.repaintCalls
+  for (let i = 0; i < 100; i++) h.toolbar.syncToolbarSettings(1000, 'written', true)
+  h.advance(30_000)
+  assert.equal(h.bar.opacity, 1)
+  assert.equal(h.bar.nativeTopmostCalls, topmostCalls)
+  assert.equal(h.bar.moveTopCalls, moves)
+  assert.ok(h.bar.repaintCalls > repaints)
+  assert.ok(h.bar.repaintCalls - repaints <= 16, 'tiny repaint must be rate limited')
+  const hiddenRepaints = h.bar.repaintCalls
+  h.toolbar.hideToolbar()
+  h.advance(30_000)
+  assert.equal(h.bar.repaintCalls, hiddenRepaints)
+})
+
+test('toolbar reload gets current transparency settings and its independently sampled theme', async () => {
+  const h = setup()
+  await h.toggle()
+  h.toolbar.syncToolbarSettings(900, 'written', false)
+  h.toolbar.syncToolbarBackgroundTheme('dark')
+  h.bar.sent.length = 0
+  h.bar.webContents.emit('did-finish-load')
+  const settings = h.bar.sent.find(([name]) => name === 'sync-toolbar-settings')[1]
+  assert.equal(settings.textOnlyAnswers, false)
+  assert.equal(settings.hoverDelay, 900)
+  assert.equal(h.bar.sent.find(([name]) => name === 'background-theme')[1], 'dark')
+  assert.equal(h.toolbar.getToolbarBackgroundTheme(), 'dark')
+  assert.equal(h.toolbar.getToolbarSampleRegion().width, 404)
+})
+
+test('missing display metrics never collapse the toolbar, and valid metrics recover its placement', async () => {
+  const h = setup()
+  h.setWorkArea({ x: 0, y: 0, width: 0, height: 0 })
+  await h.toggle()
+  assert.equal(h.bar.bounds.width, 404)
+  assert.equal(h.bar.bounds.height, 44)
+  h.setWorkArea({ x: 0, y: 0, width: 2000, height: 1200 })
+  h.advance(2100)
+  assert.equal(h.bar.bounds.y, h.mainWindow.bounds.y - 48)
+  h.setWorkArea({ x: 0, y: 0, width: 0, height: 0 })
+  h.mainWindow.emit('resize')
+  h.advance(2100)
+  assert.equal(h.bar.bounds.width, 404)
+  assert.equal(h.bar.bounds.height, 44)
 })

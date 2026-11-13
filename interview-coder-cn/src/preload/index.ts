@@ -79,7 +79,11 @@ const api = {
 
   // Settings the toolbar window needs, pushed from main (its own store is a separate copy)
   onSyncToolbarSettings: (
-    callback: (settings: { hoverDelay: number; workMode: 'written' | 'interview' | 'dual' }) => void
+    callback: (settings: {
+      hoverDelay: number
+      workMode: 'written' | 'interview' | 'dual'
+      textOnlyAnswers: boolean
+    }) => void
   ) => {
     ipcRenderer.on('sync-toolbar-settings', (_event, settings) => {
       callback(settings)

@@ -65,7 +65,7 @@ jobs:
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: interview-coder-cn-2.2.1-fusion-win-x64
+          name: interview-coder-cn-2.2.2-fusion-win-x64
           path: interview-coder-cn/dist/win-unpacked/
           if-no-files-found: error
           compression-level: 6

@@ -1196,7 +1196,7 @@ export default function SettingsPage() {
               <label className="text-sm font-medium">
                 窗口透明度
                 <span className="ml-2 text-xs font-light">
-                  拖动可实时预览效果，也可在主界面用快捷键调节
+                  调整答案窗口，可用快捷键调节；工具栏图标保持清晰
                 </span>
               </label>
               <div className="w-60 flex items-center gap-2">

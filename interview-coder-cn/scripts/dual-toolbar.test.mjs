@@ -51,6 +51,45 @@ test('written and interview retain the full set of toolbar actions', () => {
   assert.equal(actions.getToolbarActions('interview'), actions.TOOLBAR_ACTIONS)
 })
 
+test('both toolbar hash formats keep startup settings and shortcuts read-only', () => {
+  const file = ts.createSourceFile(
+    'App.tsx',
+    readFileSync(join(root, 'src/renderer/src/App.tsx'), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  )
+  const app = file.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'App'
+  )
+  const declaration = app.body.statements.find(
+    (node) =>
+      ts.isVariableStatement(node) &&
+      node.declarationList.declarations.some((item) => item.name.getText(file) === 'isToolbar')
+  )
+  const effects = app.body.statements.filter(
+    (node) =>
+      ts.isExpressionStatement(node) &&
+      ts.isCallExpression(node.expression) &&
+      node.expression.expression.getText(file) === 'useEffect'
+  )
+  const source = [declaration, ...effects].map((node) => node.getText(file)).join('\n')
+  for (const hash of ['#toolbar', '#/toolbar', '#/toolbar?reload=1']) {
+    const unexpected = () => assert.fail(`Toolbar ${hash} attempted to write main state`)
+    runInNewContext(
+      ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } })
+        .outputText,
+      {
+        window: { location: { hash }, api: new Proxy({}, { get: () => unexpected }) },
+        useEffect: (effect) => effect(),
+        initialized: true,
+        settingsStore: {},
+        shortcuts: {}
+      }
+    )
+  }
+})
+
 test('dual mode no longer hides an enabled hover toolbar; settings and help still hide it', () => {
   const file = ts.createSourceFile(
     'App.tsx',

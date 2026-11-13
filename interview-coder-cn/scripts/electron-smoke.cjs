@@ -1,10 +1,23 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
+const { PNG } = require('pngjs')
 const { mkdtempSync, writeFileSync, readdirSync, existsSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const assert = require('node:assert/strict')
 const { Worker } = require('node:worker_threads')
+
+const toolbarWrites = []
+const toolbarVisibility = []
+const registerHandler = ipcMain.handle.bind(ipcMain)
+ipcMain.handle = (channel, handler) =>
+  registerHandler(channel, (event, ...args) => {
+    if (channel === 'updateAppSettings' || channel === 'initShortcuts')
+      toolbarWrites.push(event.sender.id)
+    if (channel === 'setToolbarVisible')
+      toolbarVisibility.push({ sender: event.sender.id, visible: args[0] })
+    return handler(event, ...args)
+  })
 
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'assistant-ui-smoke-')))
 const errors = []
@@ -103,6 +116,71 @@ app.whenReady().then(async () => {
     assert.equal(panelRestored.enabled, false)
     assert.notEqual(panelRestored.background, 'rgba(0, 0, 0, 0)')
 
+    const toolbar = BrowserWindow.getAllWindows().find((window) =>
+      window.webContents.getURL().includes('toolbar')
+    )
+    assert.ok(toolbar)
+    const toolbarStyle = () =>
+      toolbar.webContents.executeJavaScript(`({
+      background:getComputedStyle(document.querySelector('.overlay-toolbar')).backgroundColor,
+      color:getComputedStyle(document.querySelector('.overlay-toolbar button')).color,
+      bodyOpacity:getComputedStyle(document.body).opacity,
+      icons:[...document.querySelectorAll('.overlay-toolbar svg')].length,
+      iconOpacity:getComputedStyle(document.querySelector('.overlay-toolbar svg')).opacity
+    })`)
+    assert.notEqual((await toolbarStyle()).background, 'rgba(0, 0, 0, 0)')
+    await main.webContents.executeJavaScript(`window.api.updateAppSettings({textOnlyAnswers:true})`)
+    await pause(150)
+    assert.equal((await toolbarStyle()).background, 'rgba(0, 0, 0, 0)')
+    for (const [theme, color] of [
+      ['light', 'rgb(24, 24, 27)'],
+      ['dark', 'rgb(245, 245, 245)']
+    ]) {
+      toolbar.webContents.send('background-theme', theme)
+      await pause(100)
+      assert.equal((await toolbarStyle()).color, color)
+    }
+    // Legacy URLs must not allow the independent toolbar store to overwrite settings.
+    await toolbar.loadFile(join(__dirname, '../out/renderer/index.html'), { hash: 'toolbar' })
+    await pause(400)
+    assert.equal(toolbarWrites.filter((id) => id === toolbar.webContents.id).length, 0)
+    for (let i = 0; i < 10; i++)
+      await main.webContents.executeJavaScript(
+        `window.api.updateAppSettings({opacity:0.1,textOnlyAnswers:true,toolbarHoverDelay:1000,workMode:'written'})`
+      )
+    main.showInactive()
+    main.blur()
+    await pause(6500)
+    assert.equal(toolbar.getOpacity(), 1)
+    const idleStyle = await toolbarStyle()
+    assert.equal(idleStyle.bodyOpacity, '1')
+    assert.equal(idleStyle.iconOpacity, '1')
+    assert.ok(idleStyle.icons >= 4)
+    const toolbarImage = (await toolbar.webContents.capturePage()).toPNG()
+    if (process.env.UI_SMOKE_TOOLBAR_SCREENSHOT)
+      writeFileSync(process.env.UI_SMOKE_TOOLBAR_SCREENSHOT, toolbarImage)
+    const pixels = PNG.sync.read(toolbarImage).data
+    let visiblePixels = 0
+    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) visiblePixels++
+    console.log(
+      JSON.stringify({
+        toolbarVisible: toolbar.isVisible(),
+        mainVisible: main.isVisible(),
+        toolbarBounds: toolbar.getBounds(),
+        idleStyle,
+        visiblePixels,
+        toolbarVisibility
+      })
+    )
+    assert.ok(visiblePixels > 40, 'toolbar icons must still be painted after idle')
+    main.focus()
+    await pause(150)
+    main.blur()
+    await pause(2200)
+    assert.equal(toolbar.getOpacity(), 1)
+    assert.equal((await toolbarStyle()).iconOpacity, '1')
+    main.hide()
+
     // Exercise the emitted worker in Electron, including ASAR loading when supplied.
     const workerName = readdirSync(join(__dirname, '../out/main')).find((name) =>
       /^image-worker-.*\.js$/.test(name)
@@ -149,6 +227,9 @@ app.whenReady().then(async () => {
         transparentAnswers: true,
         contrastingThemes: true,
         imageWorker: true,
+        transparentToolbar: true,
+        toolbarReadOnly: true,
+        toolbarIconsAfterIdle: true,
         rendererCrashes: errors.length
       })
     )

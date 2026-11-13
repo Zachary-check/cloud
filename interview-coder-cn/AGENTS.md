@@ -34,7 +34,7 @@ src/
 ├── main/                    # Electron main process
 │   ├── index.ts             # App entry: lifecycle, error handling, app.whenReady()
 │   ├── main-window.ts       # BrowserWindow creation (frameless, transparent, always-on-top)
-│   ├── toolbar-window.ts    # Overlay toolbar window: bounds/visibility/opacity glued to main window
+│   ├── toolbar-window.ts    # Overlay toolbar window: bounds/visibility/appearance synced from main
 │   ├── shortcuts.ts         # Global shortcuts registration + AI streaming orchestration (largest file)
 │   ├── ai.ts                # Vercel AI SDK integration, 3 streaming functions
 │   ├── settings.ts          # App settings object + IPC handlers
@@ -317,7 +317,9 @@ A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolb
   bar is visible and pushes `toolbar-cursor` (relative to the window bounds, both in
   DIP); the renderer then hit-tests with `elementFromPoint`. `forward: true` stays
   on as a bonus source, merged into the same state machine.
-- Opacity is applied at the window level to match the main window, which applies its own via `document.body.style.opacity`
+- Toolbar icons keep native window opacity at 1. Only the background follows `textOnlyAnswers`; never call `setOpacity` on the toolbar during settings sync. Repeated native alpha updates can disturb transparent-window composition on Windows. A visible-only repaint every two seconds refreshes the small surface without changing focus or stacking.
+- Both `#toolbar` and `#/toolbar` must identify the independent toolbar renderer at startup. It must never sync its own persisted settings or register shortcuts back into main. Packaged windows now load the canonical `#/toolbar` URL.
+- The toolbar samples its own background region for contrasting icon colours; do not assume the answer window and toolbar sit over the same colour.
 - It is a separate renderer process, so its Zustand store is a **separate copy** that does not see changes made in the main window. Settings it needs must be pushed from main (`sync-toolbar-settings`), not read from the store.
 - Buttons carry no `title`: native tooltips are drawn outside the window and are not covered by content protection
 - `TOOLBAR_ACTIONS` (`lib/toolbar-actions.ts`) drives both the toolbar and its help page section; `triggerAction` is validated against `clickableActions` in `shortcuts.ts`

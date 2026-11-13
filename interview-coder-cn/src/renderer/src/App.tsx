@@ -12,7 +12,7 @@ import { WindowResizeHandles } from '@/components/WindowResizeHandles'
 import { RecordSavePrompt } from '@/components/RecordSavePrompt'
 
 export default function App() {
-  const isToolbar = window.location.hash.startsWith('#/toolbar')
+  const isToolbar = /^#\/?toolbar(?:[/?]|$)/.test(window.location.hash)
   const [initialized, setInitialized] = useState(false)
   const settingsStore = useSettingsStore()
   const { shortcuts } = useShortcutsStore()

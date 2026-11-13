@@ -2,7 +2,7 @@ import { app, dialog, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
-import { setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
+import { syncToolbarSettings } from './toolbar-window'
 import {
   setInterviewTriggerDelayMs,
   setInterviewTriggerMuteMs,
@@ -35,11 +35,12 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   if ('hideDockIcon' in _settings) {
     applyDockVisibility(settings.hideDockIcon)
   }
-  if ('opacity' in _settings) {
-    setToolbarOpacity(settings.opacity)
-  }
-  if ('toolbarHoverDelay' in _settings || settings.workMode !== previousWorkMode) {
-    syncToolbarSettings(settings.toolbarHoverDelay, settings.workMode)
+  if (
+    'toolbarHoverDelay' in _settings ||
+    'textOnlyAnswers' in _settings ||
+    settings.workMode !== previousWorkMode
+  ) {
+    syncToolbarSettings(settings.toolbarHoverDelay, settings.workMode, settings.textOnlyAnswers)
   }
   if ('interviewTriggerDelayMs' in _settings) {
     setInterviewTriggerDelayMs(settings.interviewTriggerDelayMs)

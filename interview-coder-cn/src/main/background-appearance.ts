@@ -5,20 +5,37 @@ import { nativeExecutable } from './native-overlay'
 import { nativeEnvironment } from './capture/native-environment'
 import { settings } from './settings'
 import { state } from './state'
+import {
+  getToolbarBackgroundTheme,
+  getToolbarSampleRegion,
+  syncToolbarBackgroundTheme
+} from './toolbar-window'
 
 let theme: 'light' | 'dark' = 'light'
 let child: ChildProcessWithoutNullStreams | null = null
 let pending: ReturnType<typeof setTimeout> | null = null
 let retryAfter = 0
 let input = ''
+let pendingTarget: 'answer' | 'toolbar' | null = null
 
 function stop(): void {
   const current = child
   child = null
   if (pending) clearTimeout(pending)
   pending = null
+  pendingTarget = null
   input = ''
   current?.kill()
+}
+
+function requestRegion(region: Electron.Rectangle, target: 'answer' | 'toolbar'): void {
+  if (!child) return
+  pendingTarget = target
+  pending = setTimeout(() => {
+    retryAfter = Date.now() + 5000
+    stop()
+  }, 1500)
+  child.stdin.write(`${region.x} ${region.y} ${region.width} ${region.height}\n`)
 }
 
 function sample(): void {
@@ -61,14 +78,24 @@ function sample(): void {
         if (newline < 0) return
         const line = input.slice(0, newline)
         input = input.slice(newline + 1)
+        const sampledTarget = pendingTarget
         if (pending) clearTimeout(pending)
         pending = null
+        pendingTarget = null
         try {
           const result = JSON.parse(line)
           if (result.ok && (result.theme === 'light' || result.theme === 'dark')) {
-            theme = result.theme
-            const target = global.mainWindow
-            if (target && !target.isDestroyed()) target.webContents.send('background-theme', theme)
+            if (sampledTarget === 'toolbar') syncToolbarBackgroundTheme(result.theme)
+            else {
+              theme = result.theme
+              const target = global.mainWindow
+              if (target && !target.isDestroyed())
+                target.webContents.send('background-theme', theme)
+            }
+          }
+          if (sampledTarget === 'answer' && settings.textOnlyAnswers && state.inCoderPage) {
+            const region = getToolbarSampleRegion()
+            if (region) requestRegion(region, 'toolbar')
           }
         } catch {
           failed()
@@ -83,11 +110,7 @@ function sample(): void {
       width: bounds.width,
       height: Math.max(1, bounds.height - 80)
     })
-    pending = setTimeout(() => {
-      retryAfter = Date.now() + 5000
-      stop()
-    }, 1500)
-    child.stdin.write(`${region.x} ${region.y} ${region.width} ${region.height}\n`)
+    requestRegion(region, 'answer')
   } catch {
     retryAfter = Date.now() + 5000
     stop()
@@ -95,9 +118,9 @@ function sample(): void {
 }
 
 export function initBackgroundAppearance(): void {
-  ipcMain.handle('appearance:theme', () => {
+  ipcMain.handle('appearance:theme', (event) => {
     sample()
-    return theme
+    return event.sender === global.mainWindow?.webContents ? theme : getToolbarBackgroundTheme()
   })
   const timer = setInterval(sample, 1200)
   timer.unref()
