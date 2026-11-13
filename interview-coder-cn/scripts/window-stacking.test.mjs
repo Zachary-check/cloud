@@ -154,13 +154,14 @@ function setup() {
       ensureWindowOnScreen: noop,
       clampPositionToDisplays: (x, y) => ({ x, y })
     },
-    './take-screenshot': {},
+    './take-screenshot': { cancelPendingCapture: () => {}, getCaptureError: () => undefined },
     './save-screenshot': {},
     './ai': {},
     '../shared/dual-answer': {},
     '../shared/interview-turn': {},
     './interview-record': {},
     './state': { state: { inCoderPage: true, ignoreMouse: true } },
+    './native-overlay': { nativeAnswerEvent: () => {} },
     './settings': { settings: {} },
     './transcription': { setInterviewTriggerHandler: noop }
   })

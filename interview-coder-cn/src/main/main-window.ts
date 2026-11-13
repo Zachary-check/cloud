@@ -114,10 +114,23 @@ export function createWindow(): void {
     applyContentProtection(mainWindow)
 
     // Reclaim top position when other apps steal it
+    let restoringTopmost = false
     mainWindow.on('always-on-top-changed', (_event, isAlwaysOnTop) => {
-      if (!isAlwaysOnTop && mainWindow.isVisible() && !mainWindow.isDestroyed()) {
+      if (
+        !restoringTopmost &&
+        !isAlwaysOnTop &&
+        mainWindow.isVisible() &&
+        !mainWindow.isDestroyed()
+      ) {
         // Only re-set the flag; avoid moveTop() to not disturb other window focus
-        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1)
+        // Some window managers synchronously reject the change and emit false
+        // again. The background guard can retry later; this handler must not recurse.
+        restoringTopmost = true
+        try {
+          mainWindow.setAlwaysOnTop(true, 'screen-saver', 1)
+        } finally {
+          restoringTopmost = false
+        }
       }
     })
   })

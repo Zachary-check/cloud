@@ -17,6 +17,7 @@ import {
 } from '../shared/interview-knowledge'
 import type { PinnedProjectRule } from '../shared/pinned-project'
 import { DEFAULT_INTERVIEW_TRIGGER_MUTE_MS } from '../shared/interview-trigger'
+import { normalizeCaptureSettings } from '../shared/capture'
 
 ipcMain.handle('getAppSettings', () => {
   return settings
@@ -26,6 +27,7 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   const previousWorkMode = settings.workMode
   const previousDashscopeApiKey = settings.dashscopeApiKey
   Object.assign(settings, _settings)
+  Object.assign(settings, normalizeCaptureSettings(settings))
   if ('hideDockIcon' in _settings) {
     applyDockVisibility(settings.hideDockIcon)
   }
@@ -131,6 +133,7 @@ ipcMain.handle(
 )
 
 export const settings = {
+  ...normalizeCaptureSettings({}),
   apiBaseURL: process.env.API_BASE_URL || '',
   apiKey: process.env.API_KEY || '',
   model: process.env.MODEL || '',

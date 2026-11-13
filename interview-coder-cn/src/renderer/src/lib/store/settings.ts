@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { normalizeCaptureSettings, type CaptureSettings } from '../../../../shared/capture'
 import codingPrompt from './prompts/coding.md?raw'
 import englishExamPrompt from './prompts/english-exam.md?raw'
 import aptitudeTestPrompt from './prompts/aptitude-test.md?raw'
@@ -85,7 +86,7 @@ export const OPACITY_STEP = 0.05
 export type WorkMode = 'written' | 'interview' | 'dual'
 export type AudioCaptureSource = 'system' | 'microphone'
 
-interface Settings {
+interface Settings extends CaptureSettings {
   // theme: 'light' | 'dark'an
   apiBaseURL: string
   apiKey: string
@@ -157,6 +158,7 @@ interface SettingsStore extends Settings {
 }
 
 const defaultSettings: Settings = {
+  ...normalizeCaptureSettings({}),
   apiBaseURL: '',
   apiKey: '',
   model: '',

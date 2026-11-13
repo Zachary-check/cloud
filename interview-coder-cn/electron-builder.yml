@@ -29,6 +29,10 @@ files:
   - '!**/node_modules/**/dist/test/**'
   # 项目根目录的开发文件（测试脚本、给 AI 读的说明等），不应随分发
   - '!scripts/*'
+  - '!native/**'
+  - '!tests/**'
+  - '!docs/**'
+  - '!.workbuddy/**'
   - '!{AGENTS.md,CLAUDE.md,components.json}'
 # 只保留中文与英文语言包。Electron 默认附带 55 个 locale，共 43 MB，
 # 其中 54 个在本应用里永远不会被加载。
@@ -37,7 +41,17 @@ electronLanguages:
   - en-US
 asarUnpack:
   - resources/**
+extraResources:
+  - from: native/bin
+    to: native
+    filter:
+      - '*.exe'
 win:
+  target:
+    - target: zip
+      arch: [x64]
+  artifactName: ${name}-${version}-fusion-win-x64.${ext}
+  signAndEditExecutable: false
   executableName: 截屏解题助手
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
@@ -47,7 +61,7 @@ nsis:
 mac:
   artifactName: ${name}-${version}-${arch}-mac.${ext}
   entitlementsInherit: build/entitlements.mac.plist
-  publish: null  # 关闭 macOS 自动更新功能
+  publish: null # 关闭 macOS 自动更新功能
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
@@ -70,5 +84,3 @@ npmRebuild: false
 # resources/app-update.yml 与 latest.yml，产物里不存在可用更新源；
 # 否则它会依据 package.json 的 repository 字段自动推断出 GitHub 发布源。
 publish: null
-electronDownload:
-  mirror: https://npmmirror.com/mirrors/electron/

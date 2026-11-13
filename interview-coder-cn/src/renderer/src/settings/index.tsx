@@ -46,6 +46,7 @@ import { CustomShortcuts, ResetDefaultShortcuts } from './CustomShortcuts'
 import { TriggerDelayInput } from './TriggerDelayInput'
 import { TriggerMuteInput } from './TriggerMuteInput'
 import { CodeLanguageInput } from './CodeLanguageInput'
+import { CaptureSettingsCard } from './CaptureSettings'
 import {
   MAX_INTERVIEW_KNOWLEDGE_DOCUMENT_CHARS,
   MAX_INTERVIEW_KNOWLEDGE_DOCUMENTS,
@@ -296,6 +297,7 @@ export default function SettingsPage() {
 
       {/* Settings Content */}
       <div id="app-content" className="flex flex-col gap-4 p-8">
+        <CaptureSettingsCard />
         {/* Work Mode */}
         <div className="bg-gray-300/80 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center">

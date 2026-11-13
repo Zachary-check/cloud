@@ -1,7 +1,8 @@
 import { appendFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, desktopCapturer, nativeImage, screen } from 'electron'
-import { takeWindowsScreenshot } from './windows-screenshot'
+import { captureWindowsScreen } from './capture-controller'
+export { cancelPendingCapture, getCaptureError } from './capture-controller'
 
 /**
  * desktopCapturer can hang (a wedged capture session, a display being hot-plugged
@@ -67,21 +68,7 @@ export function takeScreenshot(): Promise<string | void> {
 
   const startedAt = Date.now()
   if (process.platform === 'win32') {
-    return takeWindowsScreenshot(width, height)
-      .then((result) => {
-        cachedPreview = { image: result.image, preview: result.preview }
-        traceCapture(
-          `capture ${width}x${height} backend=win-gdi capture=${result.captureMs}ms ` +
-            `resize=${result.resizeMs}ms encode=${result.encodeMs}ms preview=${result.previewMs}ms ` +
-            `total=${Date.now() - startedAt}ms`
-        )
-        return result.image
-      })
-      .catch((error) => {
-        traceCapture(`Windows capture failed after ${Date.now() - startedAt}ms: ${String(error)}`)
-        console.error('Error taking screenshot:', error)
-        return undefined
-      })
+    return captureWindowsScreen()
   }
   const capture = desktopCapturer
     .getSources({ types: ['screen'], thumbnailSize: { width, height } })

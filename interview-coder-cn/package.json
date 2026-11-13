@@ -1,6 +1,6 @@
 {
   "name": "interview-coder-cn",
-  "version": "2.1.15",
+  "version": "2.2.0",
   "description": "截屏解题助手，实时截屏并生成解题思路和答案",
   "main": "./out/main/index.js",
   "devEngines": {
@@ -22,7 +22,10 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "test": "node --test --test-concurrency=2 scripts/*.test.mjs",
+    "build:native": "node scripts/build-native.mjs",
+    "build:win:dir": "npm run build && electron-builder --win --x64 --dir"
   },
   "repository": {
     "type": "git",

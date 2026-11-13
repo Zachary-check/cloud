@@ -43,6 +43,8 @@ function setup() {
       ensureWindowOnScreen: (window) => window
     },
     './take-screenshot': {
+      cancelPendingCapture: () => {},
+      getCaptureError: () => undefined,
       takeScreenshot: async () => 'test-image',
       // shortcuts.ts downscales previews before sending them to the renderer
       toDisplayThumbnail: (data) => data
@@ -64,6 +66,7 @@ function setup() {
       noteRecordSources: (sources) => record.push(['sources', ...sources]),
       recordSessionBreak: () => record.push(['break'])
     },
+    './native-overlay': { nativeAnswerEvent: () => {} },
     './settings': { settings },
     './state': { state: { inCoderPage: true } },
     './transcription': {

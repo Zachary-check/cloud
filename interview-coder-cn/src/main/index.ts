@@ -27,7 +27,9 @@ process.on('uncaughtException', (error) => {
   console.error(error)
 })
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { revealMainWindow } from './shortcuts'
+import { revealMainWindow, triggerNativeAction } from './shortcuts'
+import { initCaptureController } from './capture-controller'
+import { initNativeOverlay } from './native-overlay'
 import './transcription'
 import './window-resize'
 import { createWindow } from './main-window'
@@ -104,6 +106,8 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  initNativeOverlay(triggerNativeAction, revealMainWindow)
+  initCaptureController()
 
   // One-off capture benchmark (see take-screenshot.ts). It runs a few seconds
   // after the first launch, never more than once, so the numbers come from a

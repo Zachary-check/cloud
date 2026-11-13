@@ -4,9 +4,17 @@ import type { AppSettings } from '../main/settings'
 import type { AppState } from '../main/state'
 import type { InterviewKnowledgeDocument } from '../shared/interview-knowledge'
 import type { InterviewTurnEnd, InterviewTurnStart } from '../shared/interview-turn'
+import type { CaptureCapabilities, CaptureStatus } from '../shared/capture'
 
 // Custom APIs for renderer
 const api = {
+  getCaptureInfo: () =>
+    ipcRenderer.invoke('capture:info') as Promise<{
+      capabilities: CaptureCapabilities
+      status: CaptureStatus
+    }>,
+  openNativeAnswer: () => ipcRenderer.invoke('capture:open-native') as Promise<void>,
+  closeNativeAnswer: () => ipcRenderer.invoke('capture:close-native') as Promise<void>,
   // Get app settings
   getAppSettings: () => ipcRenderer.invoke('getAppSettings'),
   // Update app settings

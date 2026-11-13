@@ -20,6 +20,9 @@ backups/
 *.7z
 *.rar
 *.exe
+!/native/bin/*.exe
+/native/bin/*.pdb
+/native/bin/*.lib
 !/dist/win-unpacked/截屏解题助手.exe
 *.msi
 *.dmg

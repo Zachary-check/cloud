@@ -1,0 +1,19 @@
+{
+  "version": "2.2.0",
+  "base_commit": "a8ccf996abc5c10496cf8efe58ef542504b0b5f6",
+  "electron_version": "37.3.1",
+  "native_compiler": "Zig 0.13.0, x86_64-windows-gnu, C++17",
+  "automated_tests": 143,
+  "ui_smoke": {
+    "launch": true,
+    "capture_settings": true,
+    "persisted_platform": "iguokao",
+    "renderer_crashes": 0,
+    "environment": "Linux Electron headless"
+  },
+  "windows_validation": "Cross-compiled and packaged; not tested against real Windows exam clients",
+  "native_components": {
+    "answer-overlay.exe": "1574ec913be74946279a28fdb750e6f231f7bac8b2e1b5a1437450412534d740",
+    "capture-helper.exe": "465423520aa92d7d7baf60de33b7746fcf7af751851e0ee83d00fdb35b1f575a"
+  }
+}

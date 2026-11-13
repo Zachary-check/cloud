@@ -100,7 +100,11 @@ function setup(open) {
     './main-window': { applyContentProtection: noop },
     './toolbar-window': toolbar,
     './window-placement': {},
-    './take-screenshot': { takeScreenshot: async () => undefined },
+    './take-screenshot': {
+      cancelPendingCapture: () => {},
+      getCaptureError: () => undefined,
+      takeScreenshot: async () => undefined
+    },
     './save-screenshot': { saveScreenshotToDisk: noop },
     './ai': {
       getGeneralStream: open,
@@ -110,6 +114,7 @@ function setup(open) {
     '../shared/dual-answer': load('src/shared/dual-answer.ts', {}),
     '../shared/interview-turn': load('src/shared/interview-turn.ts', {}),
     './interview-record': record,
+    './native-overlay': { nativeAnswerEvent: () => {} },
     './settings': { settings },
     './state': { state },
     './transcription': {

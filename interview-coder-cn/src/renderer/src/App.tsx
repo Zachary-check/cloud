@@ -12,11 +12,13 @@ import { WindowResizeHandles } from '@/components/WindowResizeHandles'
 import { RecordSavePrompt } from '@/components/RecordSavePrompt'
 
 export default function App() {
+  const isToolbar = window.location.hash.startsWith('#/toolbar')
   const [initialized, setInitialized] = useState(false)
   const settingsStore = useSettingsStore()
   const { shortcuts } = useShortcutsStore()
 
   useEffect(() => {
+    if (isToolbar) return
     window.api.getAppSettings().then((settings) => {
       const blankFields = Object.keys(settings).filter((key) => {
         const rendererValue = settingsStore[key]
@@ -43,7 +45,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (initialized) {
+    if (initialized && !isToolbar) {
       const syncedSettings = getCloneableFields(settingsStore)
       if (settingsStore.workMode === 'interview') {
         const savedPrompt = settingsStore.scenes.find((scene) => scene.id === 'interview')?.prompt
@@ -55,10 +57,10 @@ export default function App() {
       }
       window.api.updateAppSettings(syncedSettings)
     }
-  }, [initialized, settingsStore])
+  }, [initialized, settingsStore, isToolbar])
 
   useEffect(() => {
-    console.log('App initShortcuts:', shortcuts) // DEBUG: 检查新键
+    if (isToolbar) return
     window.api.initShortcuts(shortcuts)
     window.api.getShortcuts().then((shortcutsStatus) => {
       console.log('Shortcuts registered:', shortcutsStatus) // DEBUG: 主进程状态
