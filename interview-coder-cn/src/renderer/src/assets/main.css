@@ -1,0 +1,229 @@
+@import './base.css';
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply text-foreground;
+  }
+}
+
+#app-header {
+  @apply h-9 bg-gray-700/80 text-white;
+  -webkit-app-region: drag;
+  .actions {
+    -webkit-app-region: no-drag;
+  }
+}
+
+#app-content {
+  @apply h-[calc(100vh-36px)] overflow-y-auto bg-gray-500;
+}
+
+/* Reserve real space for speech controls and the footer; center short answers
+   in the remaining viewport, with safe scrolling for exceptionally long ones. */
+.interview-mode {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  @apply bg-gray-500;
+}
+.interview-mode #app-header,
+.interview-mode .transcription-bar,
+.interview-mode .app-status-bar {
+  flex-shrink: 0;
+}
+.interview-mode .transcription-bar {
+  position: relative;
+  top: auto;
+  padding-top: 0.5rem;
+}
+.interview-mode .app-status-bar {
+  position: relative;
+}
+.interview-mode #app-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+.interview-answer .prose {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: white;
+}
+/* Compact unexpected Markdown from saved prompts/models into one paragraph. */
+.interview-answer .prose :is(p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote) {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+}
+.interview-answer .prose :is(p, h1, h2, h3, h4, h5, h6, li, blockquote)::after {
+  content: ' ';
+}
+.interview-answer .prose hr {
+  display: none;
+}
+
+/* Dual used to leave both surfaces fully transparent so the window would blend
+   into whatever page sat behind it. That left the window with no opaque pixel of
+   its own: until the first answer arrived there was nothing on screen to see or
+   aim at, which reads as "the window just disappeared". A translucent dark panel
+   keeps the answer legible over any page behind it and still stays unobtrusive. */
+.dual-mode {
+  background: rgba(17, 24, 39, 0.62);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dual-mode #app-header {
+  background: rgba(31, 41, 55, 0.6);
+}
+
+.dual-mode #app-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(209, 213, 219, 0.3) transparent;
+}
+.dual-mode #app-content:hover {
+  scrollbar-color: rgba(209, 213, 219, 0.5) transparent;
+}
+.dual-mode #app-content::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.dual-mode #app-content::-webkit-scrollbar-track,
+.dual-mode #app-content::-webkit-scrollbar-button {
+  background: transparent;
+}
+.dual-mode #app-content::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+}
+.dual-mode #app-content::-webkit-scrollbar-thumb {
+  background: rgba(209, 213, 219, 0.3);
+  border-radius: 3px;
+}
+.dual-mode #app-content:hover::-webkit-scrollbar-thumb {
+  background: rgba(209, 213, 219, 0.5);
+}
+
+.transcription-scroll {
+  overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.transcription-scroll:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+.transcription-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.transcription-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+}
+.transcription-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.overlay-toolbar {
+  @apply flex h-11 items-center gap-0.5 rounded-md bg-gray-700/80 p-2 text-white;
+  -webkit-app-region: no-drag;
+}
+
+.overlay-toolbar button {
+  @apply relative size-7 shrink-0 cursor-default overflow-hidden hover:bg-white/15 hover:text-white;
+}
+
+/* Fills up over the dwell time, so hover-to-trigger is visible before it fires */
+.dwell-progress {
+  @apply pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-white/80;
+  animation: dwell-fill linear forwards;
+}
+
+@keyframes dwell-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.window-resize-handle {
+  position: fixed;
+  z-index: 2147483647;
+  -webkit-app-region: no-drag;
+  touch-action: none;
+}
+.window-resize-n,
+.window-resize-s {
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.window-resize-e,
+.window-resize-w {
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.window-resize-n {
+  top: 0;
+}
+.window-resize-s {
+  bottom: 0;
+}
+.window-resize-e {
+  right: 0;
+}
+.window-resize-w {
+  left: 0;
+}
+.window-resize-ne,
+.window-resize-se,
+.window-resize-sw,
+.window-resize-nw {
+  width: 10px;
+  height: 10px;
+}
+.window-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.window-resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+.window-resize-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.window-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+/* The toolbar window holds nothing but the toolbar, so it must never scroll */
+body:has(.overlay-toolbar-root) {
+  overflow: hidden;
+}
+
+/*
+ * The toolbar window is mouse-transparent (see main/toolbar-window.ts), so the
+ * cursor is answered by whatever sits underneath it and nothing here may
+ * advertise itself. It also no longer mounts resize handles — a drag cannot
+ * start without a pointerdown — so there is no edge cursor left to suppress.
+ */

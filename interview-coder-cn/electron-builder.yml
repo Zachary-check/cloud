@@ -1,0 +1,74 @@
+appId: com.electron.app
+productName: 截屏解题助手
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # ---- 瘦身：以下内容生产运行时一律用不到 ----
+  # source map 只用于调试，却占了 asar 体积的近一半（27 MB / 59 MB）
+  - '!**/*.map'
+  # TypeScript 类型声明在编译期已被消化，运行时不会读取
+  - '!**/*.d.ts'
+  - '!**/*.d.mts'
+  - '!**/*.d.cts'
+  # 依赖包附带的 .ts 源码（如 zod 的 src/ 与 tests/，约 1.7 MB）。
+  # Node/Electron 只加载编译后的 .js/.cjs/.mjs，永不 require .ts。
+  - '!**/*.ts'
+  # 各依赖包自带的文档副本（Chromium 自身的许可声明 LICENSES.chromium.html 属
+  # BSD 许可要求随分发保留的内容，故意不动）
+  - '!**/LICENSE*'
+  - '!**/LICENCE*'
+  - '!**/README*'
+  - '!**/CHANGELOG*'
+  # 依赖包自带的测试产物，例如 @ai-sdk/provider-utils/dist/test（约 3.9 MB）
+  - '!**/node_modules/**/dist/test/**'
+  # 项目根目录的开发文件（测试脚本、给 AI 读的说明等），不应随分发
+  - '!scripts/*'
+  - '!{AGENTS.md,CLAUDE.md,components.json}'
+# 只保留中文与英文语言包。Electron 默认附带 55 个 locale，共 43 MB，
+# 其中 54 个在本应用里永远不会被加载。
+electronLanguages:
+  - zh-CN
+  - en-US
+asarUnpack:
+  - resources/**
+win:
+  executableName: 截屏解题助手
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  artifactName: ${name}-${version}-${arch}-mac.${ext}
+  entitlementsInherit: build/entitlements.mac.plist
+  publish: null  # 关闭 macOS 自动更新功能
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: ${name}-${version}.${ext}
+npmRebuild: false
+# 自动更新已断开。publish 显式置为 null 后，electron-builder 不再生成
+# resources/app-update.yml 与 latest.yml，产物里不存在可用更新源；
+# 否则它会依据 package.json 的 repository 字段自动推断出 GitHub 发布源。
+publish: null
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/

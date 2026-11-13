@@ -1,5 +1,0 @@
-interview-coder-cn/win-unpacked/** -text
-interview-coder-cn/win-unpacked/*.exe filter=lfs diff=lfs merge=lfs -text
-interview-coder-cn/win-unpacked/*.zip filter=lfs diff=lfs merge=lfs -text
-*.md text eol=lf
-SHA256SUMS.txt text eol=lf
