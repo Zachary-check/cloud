@@ -4,7 +4,11 @@
 
 项目位于 [interview-coder-cn](interview-coder-cn)，同步自本地项目的源码、测试、构建资源和配置。
 
-依赖目录、编译与打包产物、历史安装包、缓存和本地开发记录已排除。
+仓库保留项目源码和当前 Windows 免安装版。依赖目录、历史安装包、缓存和本地开发记录已排除。
+
+### Windows 免安装版
+
+安装 Git LFS 后克隆仓库，在 [dist/win-unpacked](interview-coder-cn/dist/win-unpacked) 中运行「截屏解题助手.exe」。请保留整个目录，已有本地副本可执行「git pull」和「git lfs pull」更新。
 
 ### 本地启动
 

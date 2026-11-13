@@ -1,6 +1,7 @@
 node_modules
 out
-dist
+/dist/*
+!/dist/win-unpacked/
 .DS_Store
 .eslintcache
 *.log*
@@ -19,6 +20,7 @@ backups/
 *.7z
 *.rar
 *.exe
+!/dist/win-unpacked/截屏解题助手.exe
 *.msi
 *.dmg
 *.AppImage

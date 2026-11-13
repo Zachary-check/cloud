@@ -1,0 +1,2 @@
+dist/win-unpacked/** -text
+dist/win-unpacked/*.exe filter=lfs diff=lfs merge=lfs -text
