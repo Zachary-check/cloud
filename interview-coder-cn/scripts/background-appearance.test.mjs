@@ -5,7 +5,7 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 
-function setup() {
+function setup(windowCompatibilityMode = false) {
   const children = [],
     commands = [],
     answers = [],
@@ -13,7 +13,7 @@ function setup() {
     timeouts = new Map()
   let handler, tick, quit
   let toolbarTheme = 'light'
-  const settings = { textOnlyAnswers: true }
+  const settings = { textOnlyAnswers: true, windowCompatibilityMode }
   const webContents = { send: (_name, value) => answers.push(value) }
   const window = {
     webContents,
@@ -151,6 +151,33 @@ test('a stalled sampler is terminated and retries are bounded', () => {
   assert.equal(h.children[0].killed, true)
   for (let i = 0; i < 20; i++) h.tick()
   assert.equal(h.children.length, 1)
+  assert.equal(h.timeouts.size, 0)
+  h.quit()
+})
+
+test('2.2.0 compatibility mode never starts background sampling despite a saved text preference', () => {
+  const h = setup(true)
+  h.read()
+  for (let i = 0; i < 100; i++) h.tick()
+  assert.equal(h.children.length, 0)
+  assert.equal(h.commands.length, 0)
+  assert.equal(h.settings.textOnlyAnswers, true)
+  h.quit()
+})
+
+test('enabling compatibility stops an in-flight sampler and ignores its late reply', () => {
+  const h = setup()
+  h.read()
+  const child = h.children[0]
+  h.settings.windowCompatibilityMode = true
+  // An answer arriving before the next tick must not start a toolbar sample.
+  child.reply('dark')
+  assert.equal(h.commands.length, 1)
+  h.tick()
+  assert.equal(child.killed, true)
+  const before = h.answers.length
+  child.reply('light')
+  assert.equal(h.answers.length, before)
   assert.equal(h.timeouts.size, 0)
   h.quit()
 })

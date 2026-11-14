@@ -29,18 +29,22 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   const previousDashscopeApiKey = settings.dashscopeApiKey
   Object.assign(settings, _settings)
   Object.assign(settings, normalizeCaptureSettings(settings))
+  settings.windowCompatibilityMode = settings.windowCompatibilityMode !== false
   settings.textOnlyAnswers = settings.textOnlyAnswers !== false
   settings.showScreenshotPreview = settings.showScreenshotPreview === true
-  if ('textOnlyAnswers' in _settings) setNativeOverlayAppearance(settings.textOnlyAnswers)
+  const textOnly = settings.textOnlyAnswers && !settings.windowCompatibilityMode
+  if ('textOnlyAnswers' in _settings || 'windowCompatibilityMode' in _settings)
+    setNativeOverlayAppearance(textOnly)
   if ('hideDockIcon' in _settings) {
     applyDockVisibility(settings.hideDockIcon)
   }
   if (
     'toolbarHoverDelay' in _settings ||
     'textOnlyAnswers' in _settings ||
+    'windowCompatibilityMode' in _settings ||
     settings.workMode !== previousWorkMode
   ) {
-    syncToolbarSettings(settings.toolbarHoverDelay, settings.workMode, settings.textOnlyAnswers)
+    syncToolbarSettings(settings.toolbarHoverDelay, settings.workMode, textOnly)
   }
   if ('interviewTriggerDelayMs' in _settings) {
     setInterviewTriggerDelayMs(settings.interviewTriggerDelayMs)
@@ -160,6 +164,7 @@ export const settings = {
   codeLanguage: '',
   /** Kept in sync with the renderer so the overlay toolbar can match the main window */
   opacity: 0.8,
+  windowCompatibilityMode: true,
   textOnlyAnswers: true,
   showScreenshotPreview: false,
   /**

@@ -12,7 +12,9 @@ import { PrerequisitesChecker } from './PrerequisitesChecker'
 import { TranscriptionBar } from './TranscriptionBar'
 
 export default function CoderPage() {
-  const { opacity, apiKey, dashscopeApiKey, workMode, textOnlyAnswers } = useSettingsStore()
+  const { opacity, apiKey, dashscopeApiKey, workMode, textOnlyAnswers, windowCompatibilityMode } =
+    useSettingsStore()
+  const textOnly = textOnlyAnswers && !windowCompatibilityMode
   const [backgroundTheme, setBackgroundTheme] = useState<'light' | 'dark'>('light')
   const { syncAppState } = useAppStore()
   const { setIsTranscribing, setTranscriptionText, clearText } = useTranscriptionStore()
@@ -20,7 +22,7 @@ export default function CoderPage() {
   const isStartingTranscription = useRef(false)
 
   useEffect(() => {
-    if (!textOnlyAnswers) return
+    if (!textOnly) return
     let disposed = false
     void window.api
       .getBackgroundTheme()
@@ -33,7 +35,7 @@ export default function CoderPage() {
       disposed = true
       window.api.removeBackgroundThemeListener()
     }
-  }, [textOnlyAnswers])
+  }, [textOnly])
 
   useEffect(() => {
     // Every mode obeys the opacity setting, dual included. Dual mode already
@@ -200,7 +202,7 @@ export default function CoderPage() {
   return (
     <div
       data-background-theme={backgroundTheme}
-      className={`relative h-screen ${textOnlyAnswers ? 'text-only-mode' : ''} ${workMode === 'dual' ? 'dual-mode' : workMode === 'interview' ? 'interview-mode' : ''}`}
+      className={`relative h-screen ${textOnly ? 'text-only-mode' : ''} ${workMode === 'dual' ? 'dual-mode' : workMode === 'interview' ? 'interview-mode' : ''}`}
     >
       <AppHeader />
       {workMode === 'interview' && <TranscriptionBar />}

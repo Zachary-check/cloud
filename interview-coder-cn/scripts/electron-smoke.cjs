@@ -52,7 +52,9 @@ app.whenReady().then(async () => {
       platform:document.querySelector('select[aria-label="考试平台"]')?.value,
       nativeDisabled:[...document.querySelectorAll('button')].find(button=>button.textContent.includes('打开原生笔试窗'))?.disabled,
       textOnly:document.querySelector('input[aria-label="纯文字答案"]')?.checked,
-      previews:document.querySelector('input[aria-label="显示截图缩略图"]')?.checked
+      previews:document.querySelector('input[aria-label="显示截图缩略图"]')?.checked,
+      compatibility:document.querySelector('input[aria-label="2.2.0 显示兼容模式"]')?.checked,
+      textOnlyDisabled:document.querySelector('input[aria-label="纯文字答案"]')?.disabled
     })`)
     assert.ok(initial.text.includes('截图与客户端兼容'))
     assert.ok(initial.text.includes('v' + require('../package.json').version))
@@ -62,6 +64,8 @@ app.whenReady().then(async () => {
     if (process.platform !== 'win32') assert.equal(initial.nativeDisabled, true)
     assert.equal(initial.textOnly, true)
     assert.equal(initial.previews, false)
+    assert.equal(initial.compatibility, true)
+    assert.equal(initial.textOnlyDisabled, true)
     await main.webContents.executeJavaScript(`{
       const select=document.querySelector('select[aria-label="考试平台"]');
       select.value='iguokao';select.dispatchEvent(new Event('change',{bubbles:true}));
@@ -83,6 +87,44 @@ app.whenReady().then(async () => {
     assert.deepEqual(errors, [])
     const output = process.env.UI_SMOKE_SCREENSHOT
     if (output) writeFileSync(output, (await main.webContents.capturePage()).toPNG())
+
+    const toolbar = BrowserWindow.getAllWindows().find((window) =>
+      window.webContents.getURL().includes('toolbar')
+    )
+    assert.ok(toolbar)
+    await main.webContents.executeJavaScript("window.location.hash='/'")
+    await pause(400)
+    const compatibleAnswer = await main.webContents.executeJavaScript(`({
+      textOnly:!!document.querySelector('.text-only-mode'),
+      background:getComputedStyle(document.getElementById('app-content')).backgroundColor,
+      headerBackground:getComputedStyle(document.getElementById('app-header')).backgroundColor,
+      bodyOpacity:getComputedStyle(document.body).opacity
+    })`)
+    const compatibleToolbar = await toolbar.webContents.executeJavaScript(`({
+      textOnly:!!document.querySelector('.text-only-mode'),
+      background:getComputedStyle(document.querySelector('.overlay-toolbar')).backgroundColor,
+      color:getComputedStyle(document.querySelector('.overlay-toolbar button')).color,
+      bodyOpacity:getComputedStyle(document.body).opacity
+    })`)
+    // Measured from the delivered 2.2.0 app.asar with fresh settings, not a recreated window.
+    const reference = require('./fixtures/window-2.2.0-reference.json')
+    assert.deepEqual(compatibleAnswer, reference.answer)
+    assert.deepEqual(compatibleToolbar, reference.toolbar)
+    console.log(JSON.stringify({ panelCompatibility: true, compatibleAnswer, compatibleToolbar }))
+    await main.webContents.executeJavaScript("window.location.hash='/settings'")
+    await pause(200)
+    await main.webContents.executeJavaScript(
+      `document.querySelector('input[aria-label="2.2.0 显示兼容模式"]').click()`
+    )
+    await pause(150)
+    main.webContents.reload()
+    await pause(1000)
+    assert.equal(
+      await main.webContents.executeJavaScript(
+        `document.querySelector('input[aria-label="2.2.0 显示兼容模式"]').checked`
+      ),
+      false
+    )
 
     // Workbench answer surfaces must be transparent and both themes readable.
     main.hide()
@@ -118,10 +160,6 @@ app.whenReady().then(async () => {
     assert.equal(panelRestored.enabled, false)
     assert.notEqual(panelRestored.background, 'rgba(0, 0, 0, 0)')
 
-    const toolbar = BrowserWindow.getAllWindows().find((window) =>
-      window.webContents.getURL().includes('toolbar')
-    )
-    assert.ok(toolbar)
     const toolbarStyle = () =>
       toolbar.webContents.executeJavaScript(`({
       background:getComputedStyle(document.querySelector('.overlay-toolbar')).backgroundColor,
@@ -181,6 +219,16 @@ app.whenReady().then(async () => {
     await pause(2200)
     assert.ok(Math.abs(toolbar.getOpacity() - expectedToolbarOpacity) < 0.0001)
     assert.equal((await toolbarStyle()).iconOpacity, '1')
+    // Restore the compatibility default for the native Windows observations.
+    await main.webContents.executeJavaScript("window.location.hash='/settings'")
+    await pause(200)
+    await main.webContents.executeJavaScript(
+      `document.querySelector('input[aria-label="2.2.0 显示兼容模式"]').click()`
+    )
+    await pause(150)
+    await main.webContents.executeJavaScript("window.location.hash='/'")
+    await pause(200)
+    assert.notEqual((await toolbarStyle()).background, 'rgba(0, 0, 0, 0)')
     if (process.platform === 'win32') {
       const inspect = require('./windows-window-state.cjs')
       const legacy = new BrowserWindow({
@@ -287,6 +335,8 @@ app.whenReady().then(async () => {
         ok: true,
         platform: persisted,
         settings: true,
+        panelCompatibility: true,
+        compatibilityPersistence: true,
         fallback: true,
         previewSetting: true,
         transparentAnswers: true,

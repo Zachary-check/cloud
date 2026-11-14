@@ -150,7 +150,7 @@ export function initCaptureController(): void {
   )
   ipcMain.handle('capture:open-native', async () => {
     if (!settings.apiKey) throw new Error('请先填写 AI API Key')
-    setNativeOverlayAppearance(settings.textOnlyAnswers)
+    setNativeOverlayAppearance(settings.textOnlyAnswers && !settings.windowCompatibilityMode)
     await openNativeOverlay(settings.toolbarHoverDelay)
     global.mainWindow?.hide()
   })

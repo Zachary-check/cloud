@@ -42,6 +42,7 @@ function sample(): void {
   const window = global.mainWindow
   if (
     !settings.textOnlyAnswers ||
+    settings.windowCompatibilityMode ||
     !state.inCoderPage ||
     !window ||
     window.isDestroyed() ||
@@ -93,7 +94,12 @@ function sample(): void {
                 target.webContents.send('background-theme', theme)
             }
           }
-          if (sampledTarget === 'answer' && settings.textOnlyAnswers && state.inCoderPage) {
+          if (
+            sampledTarget === 'answer' &&
+            settings.textOnlyAnswers &&
+            !settings.windowCompatibilityMode &&
+            state.inCoderPage
+          ) {
             const region = getToolbarSampleRegion()
             if (region) requestRegion(region, 'toolbar')
           }

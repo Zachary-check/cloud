@@ -35,7 +35,7 @@ export function OverlayToolbar() {
   // The mode button draws a different icon per mode, and this window never sees
   // the settings store updates made in the main window
   const [workMode, setWorkMode] = useState<WorkMode>('written')
-  const [textOnly, setTextOnly] = useState(true)
+  const [textOnly, setTextOnly] = useState(false)
   const [backgroundTheme, setBackgroundTheme] = useState<'light' | 'dark'>('light')
   const [dwelling, setDwelling] = useState<ToolbarActionName | null>(null)
   /** Bumped on every arm so the progress bar restarts, even on the same button */
@@ -62,7 +62,9 @@ export function OverlayToolbar() {
         if (disposed || receivedSettings) return
         setHoverDelay(settings.toolbarHoverDelay || 0)
         setWorkMode(settings.workMode)
-        setTextOnly(settings.textOnlyAnswers !== false)
+        setTextOnly(
+          settings.textOnlyAnswers !== false && settings.windowCompatibilityMode === false
+        )
       })
       .catch(() => {})
     void window.api

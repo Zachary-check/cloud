@@ -6,7 +6,7 @@ import { DUAL_TOOLBAR_WIDTH } from '../shared/toolbar-layout'
 const TOOLBAR_WIDTH = 404
 const TOOLBAR_HEIGHT = 44
 const TOOLBAR_INSET = 4
-// Restore the default native alpha and layered-window path used in 2.2.1.
+// Preserve the default native alpha used in 2.2.0.
 // Apply it once, never multiply it by answer opacity or settings sync.
 export const WINDOWS_TOOLBAR_OPACITY = 0.8
 let toolbarWindow: BrowserWindow | null = null
@@ -15,7 +15,7 @@ let ownerWindow: BrowserWindow | null = null
 let isToolbarWanted = false
 let toolbarWorkMode: 'written' | 'interview' | 'dual' = 'written'
 let toolbarHoverDelay = 0
-let toolbarTextOnly = true
+let toolbarTextOnly = false
 let toolbarTheme: 'light' | 'dark' = 'light'
 let lastRepaintAt = 0
 let lastWorkArea: Electron.Rectangle | null = null

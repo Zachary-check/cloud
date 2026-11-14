@@ -28,7 +28,7 @@ files:
   # 依赖包自带的测试产物，例如 @ai-sdk/provider-utils/dist/test（约 3.9 MB）
   - '!**/node_modules/**/dist/test/**'
   # 项目根目录的开发文件（测试脚本、给 AI 读的说明等），不应随分发
-  - '!scripts/*'
+  - '!scripts/**'
   - '!native/**'
   - '!tests/**'
   - '!docs/**'

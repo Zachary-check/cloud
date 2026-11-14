@@ -22,6 +22,7 @@ export function CaptureSettingsCard() {
     capturePlatform,
     captureMethod,
     captureDisplay,
+    windowCompatibilityMode,
     textOnlyAnswers,
     showScreenshotPreview,
     updateSetting
@@ -139,15 +140,31 @@ export function CaptureSettingsCard() {
         <label className="flex items-start gap-3 text-sm">
           <input
             type="checkbox"
+            aria-label="2.2.0 显示兼容模式"
+            className="mt-1"
+            checked={windowCompatibilityMode}
+            onChange={(event) => updateSetting('windowCompatibilityMode', event.target.checked)}
+          />
+          <span>
+            2.2.0 显示兼容模式
+            <span className="mt-1 block text-xs leading-relaxed text-gray-500">
+              默认开启，主答题窗与工具栏恢复面板背景，暂停自动取色。若全屏客户端上看不到窗口，请先保持开启；关闭后可使用纯文字透明背景。
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
             aria-label="纯文字答案"
             className="mt-1"
             checked={textOnlyAnswers}
+            disabled={windowCompatibilityMode}
             onChange={(event) => updateSetting('textOnlyAnswers', event.target.checked)}
           />
           <span>
             纯文字答案
             <span className="mt-1 block text-xs leading-relaxed text-gray-500">
-              主工作台与原生笔试窗均使用透明背景，按下方背景明暗自动切换字色。关闭后恢复面板背景。
+              关闭显示兼容模式后生效：主工作台与原生笔试窗使用透明背景，按下方背景明暗自动切换字色。此偏好会保留。
             </span>
           </span>
         </label>
