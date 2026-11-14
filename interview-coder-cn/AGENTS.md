@@ -301,6 +301,10 @@ The app is designed to be invisible to screen-sharing software:
 - `keepWindowInFront()` repeatedly reasserts always-on-top for 5 seconds after show
 - `showInactive()` on macOS/Windows to avoid stealing focus
 
+### Native Window Order Guard
+
+`window-order-guard.ts` asks the native helper for actual z-order and rectangle overlap every 700 ms while the main window is visible. Another topmost window can move above the assistant without clearing `isAlwaysOnTop()`. Only a recognized, visible, overlapping exam window above the assistant triggers `repairWindowOrder()`, which raises main and toolbar together without activating either. Normal ordering never triggers periodic restacking. Stop on hidden/soft-hidden windows, ignore stale observations, bound outstanding requests, and back off after helper failure. This is independent of capture-platform settings and text-only appearance. Windows smoke tests simulate login-window movement and assert the typing focus stays in the simulated client. Real Iguokao is not tested.
+
 ### Overlay Toolbar
 
 A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolbar` route, so the shortcut actions can be driven with the pointer instead of the keyboard:

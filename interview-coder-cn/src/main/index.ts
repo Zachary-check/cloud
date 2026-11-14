@@ -27,10 +27,17 @@ process.on('uncaughtException', (error) => {
   console.error(error)
 })
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { revealMainWindow, shutdownActiveRequests, triggerNativeAction } from './shortcuts'
+import {
+  revealMainWindow,
+  shutdownActiveRequests,
+  triggerNativeAction,
+  getWindowOrderTarget,
+  repairWindowOrder
+} from './shortcuts'
 import { initCaptureController } from './capture-controller'
 import { initNativeOverlay } from './native-overlay'
 import { initBackgroundAppearance } from './background-appearance'
+import { initWindowOrderGuard } from './window-order-guard'
 import './transcription'
 import './window-resize'
 import { createWindow } from './main-window'
@@ -113,6 +120,7 @@ app.whenReady().then(() => {
   initNativeOverlay(triggerNativeAction, revealMainWindow)
   initCaptureController()
   initBackgroundAppearance()
+  initWindowOrderGuard(getWindowOrderTarget, repairWindowOrder)
 
   // One-off capture benchmark (see take-screenshot.ts). It runs a few seconds
   // after the first launch, never more than once, so the numbers come from a

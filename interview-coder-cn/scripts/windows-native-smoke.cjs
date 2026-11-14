@@ -59,6 +59,16 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
       assert.ok(['light', 'dark'].includes(lines[0].theme))
     }
   )
+  const ordering = await checkProcess(
+    'capture-helper.exe',
+    ['--watch-window-order'],
+    async (child, lines) => {
+      child.stdin.write('0 0 auto\n')
+      for (let i = 0; i < 100 && lines.length === 0; i++) await pause(25)
+      assert.equal(lines[0]?.ok, true)
+      assert.equal(lines[0]?.covered, false)
+    }
+  )
   const overlay = await checkProcess(
     'answer-overlay.exe',
     ['--hover-ms', '0'],
@@ -83,6 +93,7 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
       ok: true,
       nativeStartup: true,
       backgroundSample: sampled[0].ok,
+      windowOrderProtocol: ordering[0].ok,
       nativeWindow: true,
       updatesSent: 1000,
       cleanExit: true

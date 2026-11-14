@@ -190,6 +190,7 @@ function setup() {
     bar,
     toolbar,
     reveal: () => requests.revealMainWindow(),
+    repairOrder: () => requests.repairWindowOrder(),
     appState,
     advance,
     toggle: () => hotkeys.get('Control+H')(),
@@ -355,4 +356,23 @@ test('explicit recovery restores both topmost windows even when mouse passthroug
   h.reveal()
   assert.equal(h.bar.topmost, true)
   assert.equal(h.bar.opacity, 0.8)
+})
+
+test('confirmed ordering loss repairs both still-topmost windows but never reveals soft-hidden ones', async () => {
+  const h = setup()
+  h.appState.ignoreMouse = false
+  await h.toggle()
+  assert.equal(h.mainWindow.topmost, true)
+  assert.equal(h.bar.topmost, true)
+  const mainMoves = h.mainWindow.moveTopCalls
+  const barMoves = h.bar.moveTopCalls
+  h.repairOrder()
+  assert.equal(h.mainWindow.moveTopCalls, mainMoves + 1)
+  assert.equal(h.bar.moveTopCalls, barMoves + 1)
+  await h.toggle()
+  h.repairOrder()
+  assert.equal(h.mainWindow.moveTopCalls, mainMoves + 1)
+  assert.equal(h.bar.moveTopCalls, barMoves + 1)
+  assert.equal(h.mainWindow.opacity, 0)
+  assert.equal(h.bar.visible, false)
 })

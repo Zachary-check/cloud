@@ -322,3 +322,8 @@ export function reassertToolbarTopMost(level: number, aggressive: boolean): void
   }
   if (aggressive) toolbarWindow.moveTop()
 }
+
+export function getToolbarNativeHandle(): string | null {
+  if (!toolbarWindow || toolbarWindow.isDestroyed() || !toolbarWindow.isVisible()) return null
+  return toolbarWindow.getNativeWindowHandle().readBigUInt64LE().toString()
+}

@@ -25,6 +25,8 @@ public static class WindowStateProbe {
   public static extern IntPtr GetTopWindow(IntPtr window);
   [DllImport("user32.dll")]
   public static extern IntPtr GetWindow(IntPtr window, uint command);
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
 }
 '@
 $entries = @(${entries.join(',')})
@@ -37,7 +39,7 @@ $result = foreach ($entry in $entries) {
     if ($cursor -eq $entry.Handle) { $position=$index; break }
     $cursor=[WindowStateProbe]::GetWindow($cursor,2); $index++
   }
-  [pscustomobject]@{name=$entry.Name;layered=(($style -band 0x80000) -ne 0);topmost=(($style -band 8) -ne 0);visible=[WindowStateProbe]::IsWindowVisible($entry.Handle);hasAlpha=$hasAlpha;alpha=[int]$alpha;flags=[int]$flags;z=$position}
+  [pscustomobject]@{name=$entry.Name;layered=(($style -band 0x80000) -ne 0);topmost=(($style -band 8) -ne 0);visible=[WindowStateProbe]::IsWindowVisible($entry.Handle);foreground=([WindowStateProbe]::GetForegroundWindow() -eq $entry.Handle);hasAlpha=$hasAlpha;alpha=[int]$alpha;flags=[int]$flags;z=$position}
 }
 ConvertTo-Json -InputObject @($result) -Compress
 `

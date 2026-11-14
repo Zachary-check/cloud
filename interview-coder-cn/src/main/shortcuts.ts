@@ -303,6 +303,18 @@ export function revealMainWindow(): void {
   keepWindowInFront(mainWindow)
 }
 
+export function getWindowOrderTarget(): BrowserWindow | null {
+  const window = global.mainWindow
+  return window && !window.isDestroyed() && window.isVisible() && !isWindowSoftHidden
+    ? window
+    : null
+}
+
+export function repairWindowOrder(): void {
+  const window = getWindowOrderTarget()
+  if (window) applyTopMost(window, true)
+}
+
 function showMainWindow(window: BrowserWindow) {
   if (process.platform === 'darwin' || process.platform === 'win32') {
     window.showInactive()

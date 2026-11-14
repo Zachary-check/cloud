@@ -170,6 +170,7 @@ std::wstring processName(DWORD pid) {
   if(slash!=std::wstring::npos) result=result.substr(slash+1);
   std::transform(result.begin(),result.end(),result.begin(),towlower); return result;
 }
+#include "window-order.h"
 bool windowInfo(HWND hwnd,Window& window,DWORD ownerPid) {
   if(!IsWindowVisible(hwnd)||IsIconic(hwnd)||hwnd==GetShellWindow()) return false;
   DWORD cloaked=0;
@@ -274,6 +275,7 @@ Options parse(int argc,wchar_t** argv) {
     if(key==L"--capabilities") result.command=L"capabilities";
     else if(key==L"--snapshot") result.command=L"snapshot";
     else if(key==L"--watch-background") result.command=L"background";
+    else if(key==L"--watch-window-order") result.command=L"window-order";
     else if(i+1<argc) {
       const std::wstring value=argv[++i];
       if(key==L"--mode") result.mode=value;
@@ -291,6 +293,21 @@ int run(const Options& options) {
   auto awareness=reinterpret_cast<DpiAwarenessFunction>(GetProcAddress(GetModuleHandleW(L"user32.dll"),"SetProcessDpiAwarenessContext"));
   if(!awareness||!awareness(reinterpret_cast<HANDLE>(-4))) SetProcessDPIAware();
   InputDesktop desktop;
+  if(options.command==L"window-order") {
+    std::string line;
+    while(std::getline(std::cin,line)) {
+      if(line=="stop") break;
+      if(line.size()>160) return 1;
+      std::istringstream input(line); uint64_t main=0,toolbar=0; std::string selected,extra;
+      if(!(input>>main>>toolbar>>selected)||(input>>extra)) return 1;
+      if(selected!="auto"&&selected!="general"&&selected!="iguokao"&&selected!="shixizhi"&&selected!="eztest") return 1;
+      const std::wstring platform(selected.begin(),selected.end());
+      InputDesktop current;
+      const bool covered=platformCoversOverlay(reinterpret_cast<HWND>(main),reinterpret_cast<HWND>(toolbar),platform);
+      std::cout << "{\"ok\":true,\"covered\":" << (covered?"true":"false") << "}\n" << std::flush;
+    }
+    return 0;
+  }
   if(options.command==L"background") {
     std::string line; bool light=true;
     while(std::getline(std::cin,line)) {

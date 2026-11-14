@@ -1,9 +1,9 @@
 {
-  "version": "2.2.4",
-  "base_commit": "727051b33ddf193dbbe3180e794cced8a592f714",
+  "version": "2.2.5",
+  "base_commit": "ac1233cdfb5ed94654f9b8d09ca1e122c421bdaf",
   "electron_version": "37.3.1",
   "native_compiler": "Zig 0.13.0, x86_64-windows-gnu, C++17",
-  "automated_tests": 40,
+  "automated_tests": 51,
   "ui_smoke": {
     "launch": true,
     "capture_settings": true,
@@ -24,19 +24,26 @@
   "windows_validation": "See GitHub Actions for Windows packaging, native startup/update/exit and Electron UI smoke results; real exam clients not tested",
   "native_components": {
     "answer-overlay.exe": "d649c16197c8a88c04b1447af1417c5d06d79b2ac08c907938b586b320404837",
-    "capture-helper.exe": "3fc84919ac9f705468025e5c2b858cb9fdbfad08c52c38bb325d54913e770214"
+    "capture-helper.exe": "486a4b34debe80b4cf18ac506c078ff997c09746d2bbbd63be1e5f7acef548bb"
   },
-  "automated_test_scope": "Settings migration, legacy panel appearance, transparent opt-in, sampling cancellation, window recovery, toolbar hover, interview orchestration and topmost reentrancy",
+  "automated_test_scope": "Window order observations and recovery, hidden/stale/failed helpers, Windows audio startup, settings migration, panel/transparent appearance, toolbar and interview orchestration",
   "baseline_full_regression": {
     "version": "2.2.1",
     "passed": 153
   },
   "windows_toolbar_native_opacity": 0.8,
-  "windows_client_regression": "User confirms 2.2.0 default main window and toolbar work above Iguokao; all later builds fail. Default panel rendering and disabled background sampling restored; real client validation pending.",
+  "windows_client_regression": "Moving the Iguokao login window covers the assistant while TOPMOST can remain set. Added actual native ordering/overlap checks with paired recovery. Real client validation pending.",
   "window_compatibility_mode_default": true,
   "window_rendering_reference": {
     "version": "2.2.0",
     "commit": "71bfd0f170f5790d6cdf7c8f44501fab1272b462",
     "artifact": "Previously delivered app.asar; measured in Linux Electron headless"
+  },
+  "window_order_guard": {
+    "interval_ms": 700,
+    "native_read_only": true,
+    "only_overlapping_recognized_clients": true,
+    "repair_both_windows": true,
+    "preserve_focus": true
   }
 }

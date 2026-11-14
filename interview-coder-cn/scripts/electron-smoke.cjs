@@ -263,8 +263,42 @@ app.whenReady().then(async () => {
         legacy.setOpacity(0.8)
         legacy.setIgnoreMouseEvents(true, { forward: true })
         opaque.setIgnoreMouseEvents(true, { forward: true })
-        competitor.showInactive()
+        competitor.setTitle('普通窗口 · 层级检查')
+        const bounds = main.getBounds()
+        competitor.setBounds({
+          x: bounds.x - 10,
+          y: bounds.y - 60,
+          width: bounds.width + 20,
+          height: bounds.height + 100
+        })
+        competitor.show()
+        competitor.focus()
         competitor.setAlwaysOnTop(true, 'screen-saver', 100)
+        competitor.moveTop()
+        await pause(1000)
+        const unrelated = inspect({ main, toolbar, competitor })
+        assert.ok(
+          unrelated.competitor.z < unrelated.main.z,
+          'unrelated windows must not trigger recovery'
+        )
+        competitor.setTitle('国考云 · 登录窗口模拟')
+        competitor.setPosition(bounds.x - 8, bounds.y - 58)
+        // A drag can reorder two topmost windows without clearing either flag.
+        const covered = inspect({ main, toolbar, competitor })
+        assert.equal(covered.main.topmost, true)
+        assert.equal(covered.toolbar.topmost, true)
+        assert.ok(covered.competitor.z < covered.main.z)
+        assert.equal(covered.competitor.foreground, true)
+        await pause(2100)
+        const recovered = inspect({ main, toolbar, competitor })
+        assert.ok(
+          recovered.main.z < recovered.competitor.z,
+          'covered main must recover automatically'
+        )
+        assert.ok(recovered.toolbar.z < recovered.main.z, 'toolbar must recover with its owner')
+        assert.equal(recovered.competitor.foreground, true, 'recovery must not steal typing focus')
+        console.log(JSON.stringify({ movedWindowRecovery: true, covered, recovered }))
+        // A second reorder must be recoverable by the existing explicit action too.
         competitor.moveTop()
         // The existing explicit recovery action must repair the whole pair.
         app.emit('second-instance')
@@ -346,6 +380,7 @@ app.whenReady().then(async () => {
         toolbarReadOnly: true,
         toolbarIconsAfterIdle: true,
         windowsDisplayCompatibility: process.platform === 'win32',
+        movedWindowRecovery: process.platform === 'win32',
         rendererCrashes: errors.length
       })
     )
