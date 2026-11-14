@@ -44,8 +44,9 @@ export function initWindowOrderGuard(
           stdio: ['pipe', 'pipe', 'pipe']
         })
         child = current
-        const failed = () => {
+        const failed = (error?: Error) => {
           if (child !== current) return
+          console.warn('Window order helper stopped; retrying after 5s', error?.message || '')
           retryAfter = Date.now() + 5000
           stop()
         }
@@ -69,7 +70,10 @@ export function initWindowOrderGuard(
             const result = JSON.parse(line)
             if (result.ok !== true || typeof result.covered !== 'boolean') return failed()
             // Visibility or window replacement invalidates a late observation.
-            if (result.covered && observed && observed === targetRequest()) repair()
+            if (result.covered && observed && observed === targetRequest()) {
+              repair()
+              console.info('Window order recovered without activating the assistant')
+            }
           } catch {
             failed()
           }
@@ -77,6 +81,7 @@ export function initWindowOrderGuard(
       }
       request = next
       pending = setTimeout(() => {
+        console.warn('Window order helper timed out; retrying after 5s')
         retryAfter = Date.now() + 5000
         stop()
       }, 1500)

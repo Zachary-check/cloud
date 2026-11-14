@@ -83,6 +83,7 @@ function setup(platform = 'win32') {
         return dependencies[name]
       },
       process: { platform },
+      console: { info: () => undefined, warn: () => undefined },
       Date: Clock,
       setInterval: (callback) => {
         tick = callback

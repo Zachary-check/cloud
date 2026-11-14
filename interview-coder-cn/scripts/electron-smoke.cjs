@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { app, BrowserWindow, ipcMain } = require('electron')
 const { PNG } = require('pngjs')
-const { mkdtempSync, writeFileSync, readdirSync, existsSync } = require('node:fs')
+const {
+  mkdtempSync,
+  writeFileSync,
+  readdirSync,
+  existsSync,
+  mkdirSync,
+  copyFileSync
+} = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const assert = require('node:assert/strict')
@@ -23,6 +30,29 @@ ipcMain.handle = (channel, handler) =>
 // A script entry makes Electron's app path point at scripts/. Native helpers
 // must resolve from the production project root for this to exercise them.
 app.getAppPath = () => join(__dirname, '..')
+// Some Electron runner builds report packaged even with a script entry. Supply
+// the same native resource layout as electron-builder in that case.
+if (process.platform === 'win32' && app.isPackaged) {
+  mkdirSync(join(process.resourcesPath, 'native'), { recursive: true })
+  for (const name of ['capture-helper.exe', 'answer-overlay.exe'])
+    copyFileSync(
+      join(__dirname, '../native/bin', name),
+      join(process.resourcesPath, 'native', name)
+    )
+}
+console.log(
+  JSON.stringify({
+    nativeFixture: true,
+    packaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
+    nativeExists: existsSync(
+      app.isPackaged
+        ? join(process.resourcesPath, 'native/capture-helper.exe')
+        : join(app.getAppPath(), 'native/bin/capture-helper.exe')
+    )
+  })
+)
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'assistant-ui-smoke-')))
 const errors = []
 app.on('web-contents-created', (_event, contents) => {
@@ -32,7 +62,7 @@ require('../out/main/index.js')
 const deadline = setTimeout(() => {
   console.error('UI smoke timed out')
   app.exit(1)
-}, 45000)
+}, 60000)
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 app.whenReady().then(async () => {
   try {
@@ -64,7 +94,22 @@ app.whenReady().then(async () => {
     assert.ok(initial.text.includes('API Base URL'))
     assert.ok(initial.text.includes('备用'))
     assert.equal(initial.platform, 'auto')
-    assert.equal(initial.nativeDisabled, process.platform !== 'win32')
+    if (process.platform !== 'win32') assert.equal(initial.nativeDisabled, true)
+    else {
+      // The settings card may still be awaiting its initial async capability query.
+      let info
+      for (let attempt = 0; attempt < 6; attempt++) {
+        info = await main.webContents.executeJavaScript('window.api.getCaptureInfo()')
+        if (info.capabilities.native) break
+        await pause(1000)
+      }
+      console.log(JSON.stringify({ nativeUiCapabilities: info }))
+      assert.equal(
+        info.capabilities.native,
+        true,
+        'UI smoke must load the actual native components'
+      )
+    }
     assert.equal(initial.textOnly, true)
     assert.equal(initial.previews, false)
     assert.equal(initial.compatibility, true)
