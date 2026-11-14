@@ -20,6 +20,9 @@ ipcMain.handle = (channel, handler) =>
     return handler(event, ...args)
   })
 
+// A script entry makes Electron's app path point at scripts/. Native helpers
+// must resolve from the production project root for this to exercise them.
+app.getAppPath = () => join(__dirname, '..')
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'assistant-ui-smoke-')))
 const errors = []
 app.on('web-contents-created', (_event, contents) => {
@@ -61,7 +64,7 @@ app.whenReady().then(async () => {
     assert.ok(initial.text.includes('API Base URL'))
     assert.ok(initial.text.includes('备用'))
     assert.equal(initial.platform, 'auto')
-    if (process.platform !== 'win32') assert.equal(initial.nativeDisabled, true)
+    assert.equal(initial.nativeDisabled, process.platform !== 'win32')
     assert.equal(initial.textOnly, true)
     assert.equal(initial.previews, false)
     assert.equal(initial.compatibility, true)
@@ -291,6 +294,7 @@ app.whenReady().then(async () => {
         assert.equal(covered.competitor.foreground, true)
         await pause(2100)
         const recovered = inspect({ main, toolbar, competitor })
+        console.log(JSON.stringify({ movedWindowObservation: true, covered, recovered }))
         assert.ok(
           recovered.main.z < recovered.competitor.z,
           'covered main must recover automatically'
