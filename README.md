@@ -6,7 +6,7 @@
 
 仓库保留项目源码和当前 Windows 免安装版。依赖目录、历史安装包、缓存和本地开发记录已排除。
 
-源工程现已整合为 **2.2.2 融合版**，详见 [融合版说明](interview-coder-cn/FUSION.md)。原 `dist/win-unpacked` 保留为用户上传的 2.1.15 归档；新版本可通过源码构建，或使用本次交付的融合版 ZIP。
+源工程现已整合为 **2.2.3 融合版**，详见 [融合版说明](interview-coder-cn/FUSION.md)。原 `dist/win-unpacked` 保留为用户上传的 2.1.15 归档；新版本可通过源码构建，或使用本次交付的融合版 ZIP。
 
 ### Windows 免安装版
 

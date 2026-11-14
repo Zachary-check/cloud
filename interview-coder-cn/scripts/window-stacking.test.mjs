@@ -108,6 +108,7 @@ function setup() {
     return id
   }
   const mainWindow = new FakeWindow()
+  const appState = { inCoderPage: true, ignoreMouse: true }
   const screen = {
     getDisplayMatching: () => ({ workArea }),
     getAllDisplays: () => [{ bounds: { x: 0, y: 0, width: 2000, height: 1200 } }],
@@ -142,7 +143,7 @@ function setup() {
   toolbar.createToolbarWindow(mainWindow)
   toolbar.setToolbarWanted(true)
   const bar = windows[1]
-  load('src/main/shortcuts.ts', {
+  const requests = load('src/main/shortcuts.ts', {
     electron: {
       globalShortcut: {
         register: (key, fn) => {
@@ -166,7 +167,7 @@ function setup() {
     '../shared/dual-answer': {},
     '../shared/interview-turn': {},
     './interview-record': {},
-    './state': { state: { inCoderPage: true, ignoreMouse: true } },
+    './state': { state: appState },
     './native-overlay': { nativeAnswerEvent: () => {} },
     './settings': { settings: {} },
     './transcription': { setInterviewTriggerHandler: noop }
@@ -188,6 +189,8 @@ function setup() {
     mainWindow,
     bar,
     toolbar,
+    reveal: () => requests.revealMainWindow(),
+    appState,
     advance,
     toggle: () => hotkeys.get('Control+H')(),
     moveCursor: (point) => {
@@ -292,7 +295,7 @@ test('repeated settings sync and idle repaint never lower toolbar alpha or steal
   const repaints = h.bar.repaintCalls
   for (let i = 0; i < 100; i++) h.toolbar.syncToolbarSettings(1000, 'written', true)
   h.advance(30_000)
-  assert.equal(h.bar.opacity, 1)
+  assert.equal(h.bar.opacity, 0.8)
   assert.equal(h.bar.nativeTopmostCalls, topmostCalls)
   assert.equal(h.bar.moveTopCalls, moves)
   assert.ok(h.bar.repaintCalls > repaints)
@@ -332,4 +335,24 @@ test('missing display metrics never collapse the toolbar, and valid metrics reco
   h.advance(2100)
   assert.equal(h.bar.bounds.width, 404)
   assert.equal(h.bar.bounds.height, 44)
+})
+
+test('explicit recovery restores both topmost windows even when mouse passthrough is off', async () => {
+  const h = setup()
+  h.appState.ignoreMouse = false
+  await h.toggle()
+  h.mainWindow.topmost = false
+  h.bar.topmost = false
+  const mainMoves = h.mainWindow.moveTopCalls
+  const toolbarMoves = h.bar.moveTopCalls
+  h.reveal()
+  assert.equal(h.mainWindow.topmost, true)
+  assert.equal(h.bar.topmost, true)
+  assert.equal(h.mainWindow.moveTopCalls, mainMoves + 1)
+  assert.equal(h.bar.moveTopCalls, toolbarMoves + 1)
+  // An immediate second explicit recovery must not lose the toolbar to debounce.
+  h.bar.topmost = false
+  h.reveal()
+  assert.equal(h.bar.topmost, true)
+  assert.equal(h.bar.opacity, 0.8)
 })

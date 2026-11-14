@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Camera, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useSettingsStore } from '@/lib/store/settings'
+import { version as appVersion } from '../../../../package.json'
 import {
   CAPTURE_PLATFORMS,
   type CaptureCapabilities,
@@ -68,6 +69,7 @@ export function CaptureSettingsCard() {
         <h2 className="flex items-center gap-2 font-semibold">
           <Camera className="h-4 w-4" />
           截图与客户端兼容
+          <span className="text-xs font-normal text-gray-500">v{appVersion}</span>
         </h2>
         <Button variant="ghost" size="sm" onClick={() => void refresh()}>
           <RefreshCw className="mr-1 h-3.5 w-3.5" />

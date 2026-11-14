@@ -6,6 +6,9 @@ import { DUAL_TOOLBAR_WIDTH } from '../shared/toolbar-layout'
 const TOOLBAR_WIDTH = 404
 const TOOLBAR_HEIGHT = 44
 const TOOLBAR_INSET = 4
+// Restore the default native alpha and layered-window path used in 2.2.1.
+// Apply it once, never multiply it by answer opacity or settings sync.
+export const WINDOWS_TOOLBAR_OPACITY = 0.8
 let toolbarWindow: BrowserWindow | null = null
 let ownerWindow: BrowserWindow | null = null
 /** Whether the renderer wants the toolbar on screen (main page + enabled in settings) */
@@ -47,7 +50,6 @@ export function createToolbarWindow(parent: BrowserWindow): void {
     height: TOOLBAR_HEIGHT,
     frame: false,
     transparent: true,
-    opacity: 1,
     hasShadow: false,
     // Native resize toggling breaks transparency on Windows; renderer handles own resizing.
     resizable: false,
@@ -70,6 +72,7 @@ export function createToolbarWindow(parent: BrowserWindow): void {
   ownerWindow = parent
 
   toolbarWindow.setMenuBarVisibility(false)
+  if (process.platform === 'win32') toolbarWindow.setOpacity(WINDOWS_TOOLBAR_OPACITY)
   toolbarWindow.setAlwaysOnTop(true, 'screen-saver', 2)
   toolbarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   toolbarWindow.setContentProtection(true)

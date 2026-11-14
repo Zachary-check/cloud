@@ -6,6 +6,7 @@ const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const assert = require('node:assert/strict')
 const { Worker } = require('node:worker_threads')
+const expectedToolbarOpacity = process.platform === 'win32' ? 0.8 : 1
 
 const toolbarWrites = []
 const toolbarVisibility = []
@@ -54,6 +55,7 @@ app.whenReady().then(async () => {
       previews:document.querySelector('input[aria-label="显示截图缩略图"]')?.checked
     })`)
     assert.ok(initial.text.includes('截图与客户端兼容'))
+    assert.ok(initial.text.includes('v' + require('../package.json').version))
     assert.ok(initial.text.includes('API Base URL'))
     assert.ok(initial.text.includes('备用'))
     assert.equal(initial.platform, 'auto')
@@ -151,7 +153,7 @@ app.whenReady().then(async () => {
     main.showInactive()
     main.blur()
     await pause(6500)
-    assert.equal(toolbar.getOpacity(), 1)
+    assert.ok(Math.abs(toolbar.getOpacity() - expectedToolbarOpacity) < 0.0001)
     const idleStyle = await toolbarStyle()
     assert.equal(idleStyle.bodyOpacity, '1')
     assert.equal(idleStyle.iconOpacity, '1')
@@ -177,8 +179,71 @@ app.whenReady().then(async () => {
     await pause(150)
     main.blur()
     await pause(2200)
-    assert.equal(toolbar.getOpacity(), 1)
+    assert.ok(Math.abs(toolbar.getOpacity() - expectedToolbarOpacity) < 0.0001)
     assert.equal((await toolbarStyle()).iconOpacity, '1')
+    if (process.platform === 'win32') {
+      const inspect = require('./windows-window-state.cjs')
+      const legacy = new BrowserWindow({
+        width: 404,
+        height: 44,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        focusable: false,
+        parent: main,
+        show: false
+      })
+      const opaque = new BrowserWindow({
+        width: 404,
+        height: 44,
+        frame: false,
+        transparent: true,
+        opacity: 1,
+        alwaysOnTop: true,
+        focusable: false,
+        parent: main,
+        show: false
+      })
+      const competitor = new BrowserWindow({
+        width: 1100,
+        height: 800,
+        frame: false,
+        alwaysOnTop: true,
+        show: false
+      })
+      try {
+        legacy.setOpacity(0.8)
+        legacy.setIgnoreMouseEvents(true, { forward: true })
+        opaque.setIgnoreMouseEvents(true, { forward: true })
+        competitor.showInactive()
+        competitor.setAlwaysOnTop(true, 'screen-saver', 100)
+        competitor.moveTop()
+        // The existing explicit recovery action must repair the whole pair.
+        app.emit('second-instance')
+        await pause(200)
+        const states = inspect({ main, toolbar, legacy, opaque, competitor })
+        assert.equal(states.toolbar.layered, true)
+        assert.equal(states.toolbar.hasAlpha, true)
+        assert.equal(states.legacy.hasAlpha, true)
+        assert.equal(states.toolbar.flags & 2, 2)
+        assert.equal(states.toolbar.flags & 2, states.legacy.flags & 2)
+        assert.equal(states.toolbar.alpha, states.legacy.alpha)
+        assert.equal(states.toolbar.alpha, 204)
+        assert.equal(states.main.topmost, true)
+        assert.equal(states.toolbar.topmost, true)
+        assert.ok(states.main.z >= 0 && states.toolbar.z >= 0 && states.competitor.z >= 0)
+        assert.ok(
+          states.main.z < states.competitor.z,
+          'main window must recover above the other topmost test window'
+        )
+        assert.ok(states.toolbar.z < states.main.z, 'toolbar must recover above its owner')
+        console.log(JSON.stringify({ windowsDisplayCompatibility: true, states }))
+      } finally {
+        competitor.destroy()
+        legacy.destroy()
+        opaque.destroy()
+      }
+    }
     main.hide()
 
     // Exercise the emitted worker in Electron, including ASAR loading when supplied.
@@ -230,6 +295,7 @@ app.whenReady().then(async () => {
         transparentToolbar: true,
         toolbarReadOnly: true,
         toolbarIconsAfterIdle: true,
+        windowsDisplayCompatibility: process.platform === 'win32',
         rendererCrashes: errors.length
       })
     )

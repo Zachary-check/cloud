@@ -192,12 +192,10 @@ function applyTopMost(win: BrowserWindow, aggressive = true) {
   }
   if (aggressive) win.moveTop()
 
-  if (state.ignoreMouse) {
-    const now = Date.now()
-    if (now - lastToolbarReassertAt >= TOOLBAR_REASSERT_MIN_INTERVAL) {
-      lastToolbarReassertAt = now
-      reassertToolbarTopMost(FRONT_RELATIVE_LEVEL + 1, aggressive)
-    }
+  const now = Date.now()
+  if (aggressive || now - lastToolbarReassertAt >= TOOLBAR_REASSERT_MIN_INTERVAL) {
+    lastToolbarReassertAt = now
+    reassertToolbarTopMost(FRONT_RELATIVE_LEVEL + 1, aggressive)
   }
 }
 
@@ -301,7 +299,8 @@ export function revealMainWindow(): void {
   }
 
   ensureWindowOnScreen(mainWindow)
-  mainWindow.moveTop()
+  showToolbar()
+  keepWindowInFront(mainWindow)
 }
 
 function showMainWindow(window: BrowserWindow) {

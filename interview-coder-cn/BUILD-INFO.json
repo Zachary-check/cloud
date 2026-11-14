@@ -1,9 +1,9 @@
 {
-  "version": "2.2.2",
-  "base_commit": "ce9b8f0ef2179f0609e6998d9f4aae39c1b5efdf",
+  "version": "2.2.3",
+  "base_commit": "a912139a9df687be40ca514c48008e92cf3e99be",
   "electron_version": "37.3.1",
   "native_compiler": "Zig 0.13.0, x86_64-windows-gnu, C++17",
-  "automated_tests": 24,
+  "automated_tests": 35,
   "ui_smoke": {
     "launch": true,
     "capture_settings": true,
@@ -24,9 +24,11 @@
     "answer-overlay.exe": "d649c16197c8a88c04b1447af1417c5d06d79b2ac08c907938b586b320404837",
     "capture-helper.exe": "3fc84919ac9f705468025e5c2b858cb9fdbfad08c52c38bb325d54913e770214"
   },
-  "automated_test_scope": "Toolbar hover, appearance, startup isolation, repaint scheduling, display-metric recovery and background-region sampling",
+  "automated_test_scope": "Window recovery, toolbar hover/appearance, routing, background sampling, interview orchestration and topmost reentrancy",
   "baseline_full_regression": {
     "version": "2.2.1",
     "passed": 153
-  }
+  },
+  "windows_toolbar_native_opacity": 0.8,
+  "windows_client_regression": "User reports 2.2.2 invisible above Iguokao; 2.2.1 works. Native layer compatibility restored; actual client revalidation pending."
 }
