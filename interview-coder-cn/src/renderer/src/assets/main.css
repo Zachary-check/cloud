@@ -70,6 +70,77 @@
   display: none;
 }
 
+/* Transparent pixels reveal the real desktop; the local sampler only chooses
+   readable text. Scope this to the answer page so dialogs/settings stay opaque. */
+.text-only-mode {
+  --answer-foreground: #18181b;
+  --answer-halo: rgba(255, 255, 255, 0.7);
+  background: transparent !important;
+  color: var(--answer-foreground);
+}
+.text-only-mode[data-background-theme='dark'] {
+  --answer-foreground: #f5f5f5;
+  --answer-halo: rgba(0, 0, 0, 0.7);
+}
+.text-only-mode :is(#app-header, #app-content, .app-status-bar, .interview-turn) {
+  background: transparent !important;
+  color: var(--answer-foreground);
+  box-shadow: none;
+}
+.text-only-mode #app-content,
+.text-only-mode #app-header,
+.text-only-mode .app-status-bar {
+  text-shadow: 0 0 1px var(--answer-halo);
+}
+.text-only-mode
+  #app-content
+  :is(
+    div,
+    p,
+    span,
+    button,
+    kbd,
+    strong,
+    b,
+    em,
+    a,
+    li,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    pre,
+    code,
+    th,
+    td,
+    blockquote
+  ),
+.text-only-mode #app-header button,
+.text-only-mode .app-status-bar,
+.text-only-mode .prose {
+  color: var(--answer-foreground) !important;
+}
+.text-only-mode #app-content :is(pre, code, .hljs, blockquote, table, th, td),
+.text-only-mode .interview-turn > div:first-child > span:first-child,
+.text-only-mode .app-status-bar button,
+.text-only-mode .transcription-bar,
+.text-only-mode .transcription-bar > div {
+  background: transparent !important;
+}
+.text-only-mode #app-content :is(pre, code, blockquote, table, th, td) {
+  border-color: transparent;
+  box-shadow: none;
+}
+.text-only-mode .app-status-bar button {
+  color: var(--answer-foreground);
+  border-color: currentColor;
+}
+.text-only-mode .transcription-bar :is(div, span, button) {
+  color: var(--answer-foreground);
+}
+
 /* Dual used to leave both surfaces fully transparent so the window would blend
    into whatever page sat behind it. That left the window with no opaque pixel of
    its own: until the first answer arrived there was nothing on screen to see or
@@ -139,6 +210,22 @@
 
 .overlay-toolbar button {
   @apply relative size-7 shrink-0 cursor-default overflow-hidden hover:bg-white/15 hover:text-white;
+}
+
+.overlay-toolbar.text-only-mode button {
+  background: transparent !important;
+  color: var(--answer-foreground) !important;
+  transition: none;
+}
+.overlay-toolbar button,
+.overlay-toolbar svg {
+  opacity: 1;
+}
+.overlay-toolbar.text-only-mode svg {
+  filter: drop-shadow(0 0 1px var(--answer-halo));
+}
+.overlay-toolbar.text-only-mode .dwell-progress {
+  background: currentColor;
 }
 
 /* Fills up over the dwell time, so hover-to-trigger is visible before it fires */

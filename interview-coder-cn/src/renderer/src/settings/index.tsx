@@ -46,6 +46,7 @@ import { CustomShortcuts, ResetDefaultShortcuts } from './CustomShortcuts'
 import { TriggerDelayInput } from './TriggerDelayInput'
 import { TriggerMuteInput } from './TriggerMuteInput'
 import { CodeLanguageInput } from './CodeLanguageInput'
+import { CaptureSettingsCard } from './CaptureSettings'
 import {
   MAX_INTERVIEW_KNOWLEDGE_DOCUMENT_CHARS,
   MAX_INTERVIEW_KNOWLEDGE_DOCUMENTS,
@@ -296,6 +297,7 @@ export default function SettingsPage() {
 
       {/* Settings Content */}
       <div id="app-content" className="flex flex-col gap-4 p-8">
+        <CaptureSettingsCard />
         {/* Work Mode */}
         <div className="bg-gray-300/80 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center">
@@ -1194,7 +1196,7 @@ export default function SettingsPage() {
               <label className="text-sm font-medium">
                 窗口透明度
                 <span className="ml-2 text-xs font-light">
-                  拖动可实时预览效果，也可在主界面用快捷键调节
+                  调整答案窗口，可用快捷键调节；工具栏图标保持清晰
                 </span>
               </label>
               <div className="w-60 flex items-center gap-2">

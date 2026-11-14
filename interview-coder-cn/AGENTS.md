@@ -34,7 +34,7 @@ src/
 ├── main/                    # Electron main process
 │   ├── index.ts             # App entry: lifecycle, error handling, app.whenReady()
 │   ├── main-window.ts       # BrowserWindow creation (frameless, transparent, always-on-top)
-│   ├── toolbar-window.ts    # Overlay toolbar window: bounds/visibility/opacity glued to main window
+│   ├── toolbar-window.ts    # Overlay toolbar window: bounds/visibility/appearance synced from main
 │   ├── shortcuts.ts         # Global shortcuts registration + AI streaming orchestration (largest file)
 │   ├── ai.ts                # Vercel AI SDK integration, 3 streaming functions
 │   ├── settings.ts          # App settings object + IPC handlers
@@ -301,6 +301,10 @@ The app is designed to be invisible to screen-sharing software:
 - `keepWindowInFront()` repeatedly reasserts always-on-top for 5 seconds after show
 - `showInactive()` on macOS/Windows to avoid stealing focus
 
+### Native Window Order Guard
+
+`window-order-guard.ts` asks the native helper for actual z-order and rectangle overlap every 700 ms while the main window is visible. Another topmost window can move above the assistant without clearing `isAlwaysOnTop()`. Only a recognized, visible, overlapping exam window above the assistant triggers `repairWindowOrder()`, which raises main and toolbar together without activating either. Normal ordering never triggers periodic restacking. Stop on hidden/soft-hidden windows, ignore stale observations, bound outstanding requests, and back off after helper failure. This is independent of capture-platform settings and text-only appearance. Windows smoke tests simulate login-window movement and assert the typing focus stays in the simulated client. Real Iguokao is not tested.
+
 ### Overlay Toolbar
 
 A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolbar` route, so the shortcut actions can be driven with the pointer instead of the keyboard:
@@ -317,7 +321,10 @@ A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolb
   bar is visible and pushes `toolbar-cursor` (relative to the window bounds, both in
   DIP); the renderer then hit-tests with `elementFromPoint`. `forward: true` stays
   on as a bonus source, merged into the same state machine.
-- Opacity is applied at the window level to match the main window, which applies its own via `document.body.style.opacity`
+- `windowCompatibilityMode` defaults to true and takes precedence over the saved `textOnlyAnswers` preference. It restores panel rendering and disables background sampling. Settings version 15 enables it on upgrade; explicit false persists. The confirmed working reference is the delivered **2.2.0** default main window plus independent toolbar, not upstream 2.1.0 or 2.2.1. The 2.2.0 and 2.2.1 main-window stacking implementations are substantially identical, so do not attribute this regression to their stacking policy without new evidence.
+- Toolbar icons keep full CSS opacity. Initialize Windows native opacity once to `0.8`, preserving the 2.2.0 default. Do not repeatedly sync native alpha from answer opacity. Effective text-only rendering requires `textOnlyAnswers && !windowCompatibilityMode`; push the effective value to the separate toolbar renderer and use the same condition for native answer appearance and background sampling. A visible-only repaint every two seconds refreshes the small surface without changing focus or stacking. Real client behaviour remains unverified.
+- Both `#toolbar` and `#/toolbar` must identify the independent toolbar renderer at startup. It must never sync its own persisted settings or register shortcuts back into main. Packaged windows now load the canonical `#/toolbar` URL.
+- The toolbar samples its own background region for contrasting icon colours; do not assume the answer window and toolbar sit over the same colour.
 - It is a separate renderer process, so its Zustand store is a **separate copy** that does not see changes made in the main window. Settings it needs must be pushed from main (`sync-toolbar-settings`), not read from the store.
 - Buttons carry no `title`: native tooltips are drawn outside the window and are not covered by content protection
 - `TOOLBAR_ACTIONS` (`lib/toolbar-actions.ts`) drives both the toolbar and its help page section; `triggerAction` is validated against `clickableActions` in `shortcuts.ts`

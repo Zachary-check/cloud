@@ -8,12 +8,16 @@ import {
   hideToolbar,
   setToolbarWanted,
   reassertToolbarTopMost,
-  isToolbarAvailable,
-  suspendCursorTracking,
-  resumeCursorTracking
+  isToolbarAvailable
 } from './toolbar-window'
 import { clampPositionToDisplays, ensureWindowOnScreen } from './window-placement'
-import { takeScreenshot, toDisplayThumbnail } from './take-screenshot'
+import {
+  takeScreenshot,
+  toDisplayThumbnail,
+  cancelPendingCapture,
+  getCaptureError
+} from './take-screenshot'
+import { nativeAnswerEvent } from './native-overlay'
 import { saveScreenshotToDisk } from './save-screenshot'
 import {
   getSolutionStream,
@@ -188,12 +192,10 @@ function applyTopMost(win: BrowserWindow, aggressive = true) {
   }
   if (aggressive) win.moveTop()
 
-  if (state.ignoreMouse) {
-    const now = Date.now()
-    if (now - lastToolbarReassertAt >= TOOLBAR_REASSERT_MIN_INTERVAL) {
-      lastToolbarReassertAt = now
-      reassertToolbarTopMost(FRONT_RELATIVE_LEVEL + 1, aggressive)
-    }
+  const now = Date.now()
+  if (aggressive || now - lastToolbarReassertAt >= TOOLBAR_REASSERT_MIN_INTERVAL) {
+    lastToolbarReassertAt = now
+    reassertToolbarTopMost(FRONT_RELATIVE_LEVEL + 1, aggressive)
   }
 }
 
@@ -297,7 +299,20 @@ export function revealMainWindow(): void {
   }
 
   ensureWindowOnScreen(mainWindow)
-  mainWindow.moveTop()
+  showToolbar()
+  keepWindowInFront(mainWindow)
+}
+
+export function getWindowOrderTarget(): BrowserWindow | null {
+  const window = global.mainWindow
+  return window && !window.isDestroyed() && window.isVisible() && !isWindowSoftHidden
+    ? window
+    : null
+}
+
+export function repairWindowOrder(): void {
+  const window = getWindowOrderTarget()
+  if (window) applyTopMost(window, true)
 }
 
 function showMainWindow(window: BrowserWindow) {
@@ -321,7 +336,7 @@ function keepWindowInFront(window: BrowserWindow) {
 
   const start = Date.now()
   const reassert = (aggressive = false) => {
-    if (!window.isVisible() || window.isDestroyed()) return false
+    if (window.isDestroyed() || !window.isVisible()) return false
     applyTopMost(window, aggressive)
     return true
   }
@@ -354,10 +369,34 @@ function adjustOpacity(delta: number) {
   mainWindow.webContents.send('adjust-opacity', delta)
 }
 
+let captureSequence = 0
+let pendingCaptureId: number | null = null
 function abortCurrentStream(reason: AbortReason) {
-  if (!currentStreamContext) return
-  currentStreamContext.reason = reason
-  currentStreamContext.controller.abort()
+  captureSequence++
+  pendingCaptureId = null
+  cancelPendingCapture()
+  const stream = currentStreamContext
+  currentStreamContext = null
+  if (!stream) return
+  stream.reason = reason
+  stream.controller.abort()
+}
+
+async function captureForRequest(id: number): Promise<string | void> {
+  pendingCaptureId = id
+  try {
+    return await takeScreenshot()
+  } catch (error) {
+    console.error('Screenshot request failed:', error)
+    return undefined
+  } finally {
+    if (pendingCaptureId === id) pendingCaptureId = null
+  }
+}
+
+export function shutdownActiveRequests(): void {
+  interviewRequestSequence++
+  abortCurrentStream('new-request')
 }
 
 /**
@@ -466,13 +505,13 @@ async function handleInterviewTranscript(transcript: string) {
   currentStreamContext = null
   // Replace the visible answer for every question, but keep conversationMessages
   // so follow-up questions still have the preceding project/interview context.
-  mainWindow.webContents.send('solution-clear')
+  publishSolution(mainWindow, 'clear')
   recentScreenshots = []
   hasAppendSeparator = false
 
   let screenshotData: string | null = null
   if (settings.interviewIncludeScreenshot) {
-    const capturedScreenshot = await takeScreenshot()
+    const capturedScreenshot = await captureForRequest(captureSequence)
     if (capturedScreenshot) {
       screenshotData = capturedScreenshot
       saveScreenshotToDisk(screenshotData)
@@ -524,7 +563,7 @@ async function handleInterviewTranscript(transcript: string) {
   if (screenshotData) {
     // Previews go out downscaled: the model already has the full image
     const displayShot = toDisplayThumbnail(screenshotData)
-    recentScreenshots.push(displayShot)
+    if (displayShot) recentScreenshots.push(displayShot)
     recentScreenshots = recentScreenshots.slice(-5)
     mainWindow.webContents.send('screenshot-taken', displayShot)
     mainWindow.webContents.send('screenshots-updated', recentScreenshots)
@@ -564,7 +603,7 @@ async function handleInterviewTranscript(transcript: string) {
         }
         assistantResponse += chunk
         if (turnId) appendRecordedAnswer(turnId, chunk)
-        mainWindow.webContents.send('solution-chunk', chunk)
+        publishSolution(mainWindow, 'chunk', chunk)
       }
     } catch (error) {
       if (!streamContext.controller.signal.aborted) {
@@ -588,6 +627,7 @@ async function handleInterviewTranscript(transcript: string) {
         })
       }
       mainWindow.webContents.send('solution-complete')
+      nativeAnswerEvent('status', '本题已完成；可加页、复制或重新截题')
     }
   } catch (error) {
     if (streamContext.controller.signal.aborted) {
@@ -658,25 +698,21 @@ const callbacks: Record<string, () => void> = {
     if (!mainWindow || mainWindow.isDestroyed() || !state.inCoderPage || !settings.apiKey) return
 
     abortCurrentStream('new-request')
+    const captureId = captureSequence
     const isDualMode = settings.workMode === 'dual'
-    // The capture is encoded on this thread, so show the spinner *before*
-    // awaiting it: a hover-triggered screenshot otherwise looks like the bar did
-    // nothing at all, while the app is in fact blocked for that whole time.
+    // Show capture feedback immediately; pixel processing runs in a worker.
     mainWindow.webContents.send('ai-loading-start')
     // Already on, so the finally block below has to close it on every path
     const loadingStarted = true
-    // Samples taken while the main thread is blocked would arrive in one burst
-    suspendCursorTracking()
-    let screenshotData: string | void
-    try {
-      screenshotData = await takeScreenshot()
-    } finally {
-      resumeCursorTracking()
-    }
+    const screenshotData = await captureForRequest(captureId)
+    if (captureId !== captureSequence) return
     if (!screenshotData) {
       // Never fail silently: the shortcut would look like it did nothing at all
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('solution-error', '截图失败：未能获取屏幕内容，请重试')
+        mainWindow.webContents.send(
+          'solution-error',
+          getCaptureError() || '截图失败：未能获取屏幕内容，请重试'
+        )
         mainWindow.webContents.send('ai-loading-end')
       }
       return
@@ -713,9 +749,9 @@ const callbacks: Record<string, () => void> = {
         reason: null
       }
       currentStreamContext = streamContext
-      recentScreenshots = [toDisplayThumbnail(screenshotData)]
+      recentScreenshots = [toDisplayThumbnail(screenshotData)].filter(Boolean)
       hasAppendSeparator = false
-      mainWindow.webContents.send('solution-clear')
+      publishSolution(mainWindow, 'clear')
       // This action is labelled "新开对话" and resets the model-side history just
       // above, so the visible transcript has to start over along with it.
       mainWindow.webContents.send('interview-turns-clear')
@@ -749,7 +785,7 @@ const callbacks: Record<string, () => void> = {
             }
             assistantResponse += chunk
             if (turnId) appendRecordedAnswer(turnId, chunk)
-            if (!isDualMode) mainWindow.webContents.send('solution-chunk', chunk)
+            if (!isDualMode) publishSolution(mainWindow, 'chunk', chunk)
           }
         } catch (error) {
           if (!streamContext.controller.signal.aborted) {
@@ -769,7 +805,7 @@ const callbacks: Record<string, () => void> = {
           // Add assistant response to conversation history
           if (isDualMode) {
             assistantResponse = formatDualAnswer(assistantResponse)
-            mainWindow.webContents.send('solution-chunk', assistantResponse)
+            publishSolution(mainWindow, 'chunk', assistantResponse)
           }
           if (assistantResponse) {
             conversationMessages.push({
@@ -778,6 +814,7 @@ const callbacks: Record<string, () => void> = {
             })
           }
           mainWindow.webContents.send('solution-complete')
+          nativeAnswerEvent('status', '本题已完成；可加页、复制或重新截题')
         }
       } catch (error) {
         if (streamContext.controller.signal.aborted) {
@@ -790,13 +827,14 @@ const callbacks: Record<string, () => void> = {
           mainWindow.webContents.send('solution-error', extractErrorMessage(error))
         }
       } finally {
-        if (currentStreamContext === streamContext) {
+        const isLatestStream = currentStreamContext === streamContext
+        if (isLatestStream) {
           currentStreamContext = null
         }
         if (!streamStarted && streamContext.reason === 'user') {
           mainWindow.webContents.send('solution-stopped')
         }
-        if (loadingStarted && mainWindow && !mainWindow.isDestroyed()) {
+        if (loadingStarted && isLatestStream && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('ai-loading-end')
         }
         sendTurnEnd(
@@ -825,23 +863,20 @@ const callbacks: Record<string, () => void> = {
     }
 
     abortCurrentStream('new-request')
-    // Same reason as takeScreenshot: the capture blocks this thread for about a
-    // second, so the spinner has to be up *before* awaiting it — otherwise an
-    // append looks like the shortcut did nothing until the answer starts.
+    const captureId = captureSequence
+    // Keep feedback and pointer polling active throughout asynchronous capture.
     mainWindow.webContents.send('ai-loading-start')
     // Already on, so every failure path below owes an ai-loading-end
     const loadingStarted = true
 
-    suspendCursorTracking()
-    let screenshotData: string | void
-    try {
-      screenshotData = await takeScreenshot()
-    } finally {
-      resumeCursorTracking()
-    }
+    const screenshotData = await captureForRequest(captureId)
+    if (captureId !== captureSequence) return
     if (!screenshotData) {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('solution-error', '截图失败：未能获取屏幕内容，请重试')
+        mainWindow.webContents.send(
+          'solution-error',
+          getCaptureError() || '截图失败：未能获取屏幕内容，请重试'
+        )
         mainWindow.webContents.send('ai-loading-end')
       }
       return
@@ -879,10 +914,10 @@ const callbacks: Record<string, () => void> = {
       currentStreamContext = streamContext
 
       const displayShot = toDisplayThumbnail(screenshotData)
-      recentScreenshots.push(displayShot)
+      if (displayShot) recentScreenshots.push(displayShot)
       recentScreenshots = recentScreenshots.slice(-5) // 限5张
       if (settings.workMode === 'interview') {
-        mainWindow.webContents.send('solution-clear')
+        publishSolution(mainWindow, 'clear')
       }
       mainWindow.webContents.send('screenshot-taken', displayShot)
       mainWindow.webContents.send('screenshots-updated', recentScreenshots)
@@ -902,10 +937,10 @@ const callbacks: Record<string, () => void> = {
       if (settings.workMode === 'interview') {
         hasAppendSeparator = false
       } else if (!hasAppendSeparator) {
-        mainWindow.webContents.send('solution-chunk', '\n\n---\n\n')
+        publishSolution(mainWindow, 'chunk', '\n\n---\n\n')
         hasAppendSeparator = true
       } else {
-        mainWindow.webContents.send('solution-chunk', '\n\n')
+        publishSolution(mainWindow, 'chunk', '\n\n')
       }
       // Raised before the capture already; 'solution-clear' above resets the
       // renderer's flag in interview mode, so raise it again for the answer.
@@ -930,7 +965,7 @@ const callbacks: Record<string, () => void> = {
             }
             assistantResponse += chunk
             if (turnId) appendRecordedAnswer(turnId, chunk)
-            mainWindow.webContents.send('solution-chunk', chunk)
+            publishSolution(mainWindow, 'chunk', chunk)
           }
         } catch (error) {
           if (!streamContext.controller.signal.aborted) {
@@ -955,6 +990,7 @@ const callbacks: Record<string, () => void> = {
             })
           }
           mainWindow.webContents.send('solution-complete')
+          nativeAnswerEvent('status', '本题已完成；可加页、复制或重新截题')
         }
       } catch (error) {
         if (streamContext.controller.signal.aborted) {
@@ -967,13 +1003,14 @@ const callbacks: Record<string, () => void> = {
           mainWindow.webContents.send('solution-error', extractErrorMessage(error))
         }
       } finally {
-        if (currentStreamContext === streamContext) {
+        const isLatestStream = currentStreamContext === streamContext
+        if (isLatestStream) {
           currentStreamContext = null
         }
         if (!streamStarted && streamContext.reason === 'user') {
           mainWindow.webContents.send('solution-stopped')
         }
-        if (loadingStarted && mainWindow && !mainWindow.isDestroyed()) {
+        if (loadingStarted && isLatestStream && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('ai-loading-end')
         }
         if (turnId) {
@@ -990,7 +1027,14 @@ const callbacks: Record<string, () => void> = {
 
   // Stop current AI solution stream
   stopSolutionStream: () => {
+    interviewRequestSequence++
     abortCurrentStream('user')
+    const window = global.mainWindow
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('solution-stopped')
+      window.webContents.send('ai-loading-end')
+    }
+    nativeAnswerEvent('status', '已停止本次请求；可以重新截题')
   },
 
   ignoreOrEnableMouse: () => {
@@ -1192,8 +1236,8 @@ ipcMain.handle('updateShortcuts', (_event, _shortcuts: { action: string; key: st
 })
 
 ipcMain.handle('stopSolutionStream', () => {
-  if (!currentStreamContext) return false
-  abortCurrentStream('user')
+  if (!currentStreamContext && pendingCaptureId === null) return false
+  callbacks.stopSolutionStream()
   return true
 })
 
@@ -1232,10 +1276,10 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
   currentStreamContext = streamContext
 
   if (settings.workMode === 'interview') {
-    mainWindow.webContents.send('solution-clear')
+    publishSolution(mainWindow, 'clear')
     mainWindow.webContents.send('ai-loading-start')
   } else {
-    mainWindow.webContents.send('solution-chunk', '\n\n---\n\n')
+    publishSolution(mainWindow, 'chunk', '\n\n---\n\n')
   }
   // The typed follow-up is a turn of its own in interview mode, so the question
   // and the answer it produced stay together in the transcript.
@@ -1265,7 +1309,7 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
         }
         assistantResponse += chunk
         if (turnId) appendRecordedAnswer(turnId, chunk)
-        mainWindow.webContents.send('solution-chunk', chunk)
+        publishSolution(mainWindow, 'chunk', chunk)
       }
     } catch (error) {
       if (!streamContext.controller.signal.aborted) {
@@ -1299,6 +1343,7 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
         })
       }
       mainWindow.webContents.send('solution-complete')
+      nativeAnswerEvent('status', '本题已完成；可加页、复制或重新截题')
     }
   } catch (error) {
     if (streamContext.controller.signal.aborted) {
@@ -1337,3 +1382,23 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
 
   return { success: true }
 })
+
+/** Route native-window operations through the same workflow as the toolbar. */
+export function triggerNativeAction(action: string): void {
+  if (!settings.apiKey && action !== 'stop') {
+    nativeAnswerEvent('status', '请返回工作台填写 AI API Key')
+    return
+  }
+  const mapped = {
+    capture: 'takeScreenshot',
+    append: 'appendScreenshot',
+    stop: 'stopSolutionStream'
+  }[action]
+  if (mapped) callbacks[mapped]?.()
+}
+function publishSolution(window: BrowserWindow, kind: 'clear' | 'chunk', text = ''): void {
+  if (window.isDestroyed()) return
+  if (kind === 'clear') window.webContents.send('solution-clear')
+  else window.webContents.send('solution-chunk', text)
+  nativeAnswerEvent(kind, text)
+}

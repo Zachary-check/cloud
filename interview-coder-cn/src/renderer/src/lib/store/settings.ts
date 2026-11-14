@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { normalizeCaptureSettings, type CaptureSettings } from '../../../../shared/capture'
 import codingPrompt from './prompts/coding.md?raw'
 import englishExamPrompt from './prompts/english-exam.md?raw'
 import aptitudeTestPrompt from './prompts/aptitude-test.md?raw'
@@ -85,7 +86,7 @@ export const OPACITY_STEP = 0.05
 export type WorkMode = 'written' | 'interview' | 'dual'
 export type AudioCaptureSource = 'system' | 'microphone'
 
-interface Settings {
+interface Settings extends CaptureSettings {
   // theme: 'light' | 'dark'an
   apiBaseURL: string
   apiKey: string
@@ -123,6 +124,12 @@ interface Settings {
   activeSceneId: string
 
   opacity: number
+  /** Keep the panel rendering used by 2.2.0; takes precedence over text-only mode. */
+  windowCompatibilityMode: boolean
+  /** Transparent answer surfaces with locally sampled contrasting text. */
+  textOnlyAnswers: boolean
+  /** Generate and display screenshot previews; never changes the image sent to AI. */
+  showScreenshotPreview: boolean
   /** Allow resizing the main window and overlay toolbar */
   resizable: boolean
   /** Show the click-through overlay toolbar above the main window */
@@ -157,6 +164,7 @@ interface SettingsStore extends Settings {
 }
 
 const defaultSettings: Settings = {
+  ...normalizeCaptureSettings({}),
   apiBaseURL: '',
   apiKey: '',
   model: '',
@@ -180,6 +188,9 @@ const defaultSettings: Settings = {
   activeSceneId: CODING_SCENE_ID,
 
   opacity: 0.8,
+  windowCompatibilityMode: true,
+  textOnlyAnswers: true,
+  showScreenshotPreview: false,
   resizable: true,
   showOverlayToolbar: true,
   toolbarHoverDelay: 1000,
@@ -258,9 +269,11 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'interview-coder-settings',
-      version: 14,
+      version: 15,
       migrate: (persisted, version) => {
         const state = persisted as Partial<Settings>
+        // Existing transparent preferences must not bypass the compatibility default.
+        if (version < 15) state.windowCompatibilityMode = true
         // Drop the legacy codeLanguage field (language now lives in the prompt text)
         delete (state as Record<string, unknown>).codeLanguage
         if (version < 8) {
@@ -295,6 +308,7 @@ export const useSettingsStore = create<SettingsStore>()(
         const state = { ...current, ...(persisted as Partial<Settings>) }
         // Work mode is session-only so every app restart opens in the discoverable full UI.
         state.workMode = 'written'
+        state.windowCompatibilityMode = state.windowCompatibilityMode !== false
         // The toolbar window is mouse-transparent, so hovering is its only
         // trigger: a stored "0 = clicks only" would leave it completely inert
         if (!(state.toolbarHoverDelay > 0)) state.toolbarHoverDelay = 1000

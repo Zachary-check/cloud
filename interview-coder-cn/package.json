@@ -1,6 +1,6 @@
 {
   "name": "interview-coder-cn",
-  "version": "2.1.15",
+  "version": "2.2.5",
   "description": "截屏解题助手，实时截屏并生成解题思路和答案",
   "main": "./out/main/index.js",
   "devEngines": {
@@ -22,7 +22,10 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "test": "node --test --test-concurrency=2 scripts/*.test.mjs",
+    "build:native": "node scripts/build-native.mjs",
+    "build:win:dir": "npm run build && electron-builder --win --x64 --dir"
   },
   "repository": {
     "type": "git",
@@ -48,6 +51,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "ai": "^5.0.18",
     "dotenv": "^17.2.1",
+    "pngjs": "^7.0.0",
     "ws": "^8.20.0",
     "zod": "^4.0.17"
   },
@@ -65,6 +69,7 @@
     "@tailwindcss/typography": "^0.5.16",
     "@tailwindcss/vite": "^4.1.12",
     "@types/node": "^22.16.5",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/ws": "^8.18.1",

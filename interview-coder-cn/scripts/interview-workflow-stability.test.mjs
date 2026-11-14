@@ -37,7 +37,7 @@ function load(relative, dependencies) {
   return exports
 }
 
-function setup(open) {
+function setup(open, options = {}) {
   const messages = []
   const files = new Map()
   const controls = { diskFull: false }
@@ -74,7 +74,7 @@ function setup(open) {
     }
   }
   const settings = {
-    workMode: 'interview',
+    workMode: options.workMode || 'interview',
     apiKey: 'synthetic-offline-key',
     interviewIncludeScreenshot: false
   }
@@ -100,9 +100,15 @@ function setup(open) {
     './main-window': { applyContentProtection: noop },
     './toolbar-window': toolbar,
     './window-placement': {},
-    './take-screenshot': { takeScreenshot: async () => undefined },
+    './take-screenshot': {
+      cancelPendingCapture: () => {},
+      getCaptureError: () => undefined,
+      takeScreenshot: options.capture || (async () => undefined),
+      toDisplayThumbnail: () => ''
+    },
     './save-screenshot': { saveScreenshotToDisk: noop },
     './ai': {
+      getSolutionStream: open,
       getGeneralStream: open,
       getFollowUpStream: (history, _question, signal) => open(history, signal),
       getInterviewKnowledgeSources: () => []
@@ -110,6 +116,7 @@ function setup(open) {
     '../shared/dual-answer': load('src/shared/dual-answer.ts', {}),
     '../shared/interview-turn': load('src/shared/interview-turn.ts', {}),
     './interview-record': record,
+    './native-overlay': { nativeAnswerEvent: () => {} },
     './settings': { settings },
     './state': { state },
     './transcription': {
@@ -244,4 +251,98 @@ test('manual follow-up errors end the loading state and do not prevent further q
   await h.ask('后续正常提问')
   assert.equal(h.messages.filter(([name]) => name === 'solution-complete').length, 2)
   await h.record.finalizeInterviewRecord()
+})
+
+test('stop during screenshot capture prevents the late frame from starting AI', async () => {
+  let releaseCapture
+  let opened = 0
+  const h = setup(
+    async function* () {
+      opened++
+      yield '不应出现'
+    },
+    {
+      workMode: 'written',
+      capture: () =>
+        new Promise((resolve) => {
+          releaseCapture = resolve
+        })
+    }
+  )
+  h.call('triggerAction', 'takeScreenshot')
+  assert.equal(h.loading(), true)
+  assert.equal(h.call('stopSolutionStream'), true)
+  assert.equal(h.loading(), false)
+  releaseCapture('late-image')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(opened, 0)
+  assert.equal(h.loading(), false)
+})
+
+test('a superseded screenshot stream cannot clear loading while the next screenshot is pending', async () => {
+  let captureCount = 0
+  let streamCount = 0
+  let releaseCapture, releaseOld, releaseNew
+  const h = setup(
+    async function* () {
+      if (++streamCount === 1) {
+        yield '旧答案'
+        await new Promise((resolve) => {
+          releaseOld = resolve
+        })
+      } else {
+        yield '新答案'
+        await new Promise((resolve) => {
+          releaseNew = resolve
+        })
+      }
+    },
+    {
+      workMode: 'written',
+      capture: () =>
+        ++captureCount === 1
+          ? Promise.resolve('first-image')
+          : new Promise((resolve) => {
+              releaseCapture = resolve
+            })
+    }
+  )
+  h.call('triggerAction', 'takeScreenshot')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(streamCount, 1)
+  h.call('triggerAction', 'takeScreenshot')
+  releaseOld()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(h.loading(), true)
+  releaseCapture('second-image')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(streamCount, 2)
+  assert.equal(h.loading(), true)
+  releaseNew()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(h.loading(), false)
+})
+
+test('capture exceptions report an error, release loading, and leave the next capture usable', async () => {
+  let attempts = 0
+  const h = setup(
+    async function* () {
+      yield '恢复正常'
+    },
+    {
+      workMode: 'written',
+      capture: async () => {
+        if (++attempts === 1) throw new Error('Injected disconnected display')
+        return 'recovered-image'
+      }
+    }
+  )
+  h.call('triggerAction', 'takeScreenshot')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(h.loading(), false)
+  assert.ok(h.messages.some(([name]) => name === 'solution-error'))
+  h.call('triggerAction', 'takeScreenshot')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(h.loading(), false)
+  assert.ok(h.messages.some(([name]) => name === 'solution-complete'))
 })

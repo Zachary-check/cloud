@@ -35,22 +35,48 @@ export function OverlayToolbar() {
   // The mode button draws a different icon per mode, and this window never sees
   // the settings store updates made in the main window
   const [workMode, setWorkMode] = useState<WorkMode>('written')
+  const [textOnly, setTextOnly] = useState(false)
+  const [backgroundTheme, setBackgroundTheme] = useState<'light' | 'dark'>('light')
   const [dwelling, setDwelling] = useState<ToolbarActionName | null>(null)
   /** Bumped on every arm so the progress bar restarts, even on the same button */
   const [dwellRound, setDwellRound] = useState(0)
 
   // This window has its own settings store copy, so main pushes the live value
   useEffect(() => {
-    window.api.getAppSettings().then((settings) => {
-      setHoverDelay(settings.toolbarHoverDelay || 0)
-      setWorkMode(settings.workMode)
-    })
-    window.api.onSyncToolbarSettings(({ hoverDelay, workMode }) => {
+    let disposed = false
+    let receivedSettings = false
+    let receivedTheme = false
+    window.api.onSyncToolbarSettings(({ hoverDelay, workMode, textOnlyAnswers }) => {
+      receivedSettings = true
       setHoverDelay(hoverDelay || 0)
       setWorkMode(workMode)
+      setTextOnly(textOnlyAnswers)
     })
+    window.api.onBackgroundTheme((theme) => {
+      receivedTheme = true
+      setBackgroundTheme(theme)
+    })
+    void window.api
+      .getAppSettings()
+      .then((settings) => {
+        if (disposed || receivedSettings) return
+        setHoverDelay(settings.toolbarHoverDelay || 0)
+        setWorkMode(settings.workMode)
+        setTextOnly(
+          settings.textOnlyAnswers !== false && settings.windowCompatibilityMode === false
+        )
+      })
+      .catch(() => {})
+    void window.api
+      .getBackgroundTheme()
+      .then((theme) => {
+        if (!disposed && !receivedTheme) setBackgroundTheme(theme)
+      })
+      .catch(() => {})
     return () => {
+      disposed = true
       window.api.removeSyncToolbarSettingsListener()
+      window.api.removeBackgroundThemeListener()
     }
   }, [])
 
@@ -119,7 +145,10 @@ export function OverlayToolbar() {
   }, [delay, isDualMode])
 
   return (
-    <div className="overlay-toolbar overlay-toolbar-root">
+    <div
+      className={`overlay-toolbar overlay-toolbar-root ${textOnly ? 'text-only-mode' : ''}`}
+      data-background-theme={backgroundTheme}
+    >
       {getToolbarActions(workMode).map((entry) => {
         const { action, Icon, label } = resolveToolbarAction(entry, workMode)
         return (

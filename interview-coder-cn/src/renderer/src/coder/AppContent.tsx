@@ -58,7 +58,7 @@ function measureAnchor(container: HTMLElement, card: Element): AnchorMetrics {
 const InterviewTurnCard = memo(function InterviewTurnCard({ turn }: { turn: InterviewTurn }) {
   const note = TURN_STATUS_NOTES[turn.status]
   return (
-    <div className="rounded-lg bg-gray-600/40 px-4 py-3">
+    <div className="interview-turn rounded-lg bg-gray-600/40 px-4 py-3">
       <div className="mb-2 flex items-start gap-2 text-xs text-gray-200">
         <span className="shrink-0 rounded bg-gray-700/80 px-1.5 py-0.5">
           {TURN_LABELS[turn.kind]}
@@ -101,6 +101,7 @@ export function AppContent() {
   const [recentScreenshots, setRecentScreenshots] = useState<string[]>([])
   const contentRef = useRef<HTMLDivElement>(null)
   const workMode = useSettingsStore((state) => state.workMode)
+  const showScreenshotPreview = useSettingsStore((state) => state.showScreenshotPreview)
   // Markdown parsing/highlighting can be noticeably heavier than the live
   // transcription bar. Keep the latest AI text available, but let React defer
   // the expensive markdown pass so ASR updates remain responsive.
@@ -401,7 +402,7 @@ export function AppContent() {
       )}
 
       {/* Screenshot Gallery */}
-      {recentScreenshots.length > 0 ? (
+      {showScreenshotPreview && recentScreenshots.length > 0 ? (
         <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
           {recentScreenshots.map((data, index) => (
             <img
@@ -413,7 +414,7 @@ export function AppContent() {
             />
           ))}
         </div>
-      ) : screenshotData ? (
+      ) : showScreenshotPreview && screenshotData ? (
         <div className="mb-4">
           <img
             src={`data:image/png;base64,${screenshotData}`}
@@ -421,9 +422,9 @@ export function AppContent() {
             className="w-40 h-auto border border-gray-600 rounded-lg shadow-lg"
           />
         </div>
-      ) : (
+      ) : !deferredSolutionText && !isLoading ? (
         <ShortcutTip />
-      )}
+      ) : null}
 
       {/* Solution Display */}
       <MarkdownRenderer>{deferredSolutionText}</MarkdownRenderer>

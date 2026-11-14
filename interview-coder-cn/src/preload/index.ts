@@ -4,9 +4,22 @@ import type { AppSettings } from '../main/settings'
 import type { AppState } from '../main/state'
 import type { InterviewKnowledgeDocument } from '../shared/interview-knowledge'
 import type { InterviewTurnEnd, InterviewTurnStart } from '../shared/interview-turn'
+import type { CaptureCapabilities, CaptureStatus } from '../shared/capture'
 
 // Custom APIs for renderer
 const api = {
+  getBackgroundTheme: () => ipcRenderer.invoke('appearance:theme') as Promise<'light' | 'dark'>,
+  onBackgroundTheme: (callback: (theme: 'light' | 'dark') => void) => {
+    ipcRenderer.on('background-theme', (_event, theme) => callback(theme))
+  },
+  removeBackgroundThemeListener: () => ipcRenderer.removeAllListeners('background-theme'),
+  getCaptureInfo: () =>
+    ipcRenderer.invoke('capture:info') as Promise<{
+      capabilities: CaptureCapabilities
+      status: CaptureStatus
+    }>,
+  openNativeAnswer: () => ipcRenderer.invoke('capture:open-native') as Promise<void>,
+  closeNativeAnswer: () => ipcRenderer.invoke('capture:close-native') as Promise<void>,
   // Get app settings
   getAppSettings: () => ipcRenderer.invoke('getAppSettings'),
   // Update app settings
@@ -66,7 +79,11 @@ const api = {
 
   // Settings the toolbar window needs, pushed from main (its own store is a separate copy)
   onSyncToolbarSettings: (
-    callback: (settings: { hoverDelay: number; workMode: 'written' | 'interview' | 'dual' }) => void
+    callback: (settings: {
+      hoverDelay: number
+      workMode: 'written' | 'interview' | 'dual'
+      textOnlyAnswers: boolean
+    }) => void
   ) => {
     ipcRenderer.on('sync-toolbar-settings', (_event, settings) => {
       callback(settings)

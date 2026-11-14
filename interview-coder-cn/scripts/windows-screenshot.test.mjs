@@ -25,7 +25,11 @@ function load(file, dependencies, globals = {}) {
 }
 
 function helper(execFile) {
-  return load('windows-screenshot', { 'node:child_process': { execFile }, 'node:path': { join } })
+  return load('windows-screenshot', {
+    'node:child_process': { execFile },
+    'node:path': { join },
+    './capture/native-environment': { nativeEnvironment: () => ({}) }
+  })
 }
 
 const image = Buffer.from('89504e470d0a1a0a00000000', 'hex').toString('base64')
@@ -84,15 +88,23 @@ function screenshotModule(capture) {
     {
       'node:fs': { appendFileSync: () => {}, readFileSync: () => assert.fail('No capture probe') },
       'node:path': { join },
+      './capture/native-environment': { nativeEnvironment: () => ({}) },
       electron: {
         app: { getPath: () => 'unused' },
         screen: { getPrimaryDisplay: () => ({ size: { width: 2195, height: 1235 } }) },
         desktopCapturer: { getSources: () => assert.fail('No Electron capture on Windows') },
         nativeImage: {
-          createFromBuffer: () => assert.fail('Preview must use cached helper output')
+          createFromBuffer: () => ({
+            getSize: () => ({ width: 320 }),
+            resize: () => ({ toPNG: () => Buffer.from('preview') })
+          })
         }
       },
-      './windows-screenshot': { takeWindowsScreenshot: capture }
+      './capture-controller': {
+        captureWindowsScreen: async () => (await capture(2195, 1235))?.image
+      },
+      './settings': { settings: { showScreenshotPreview: true } },
+      './capture/image-processing': { cachedDisplayThumbnail: () => 'cached-preview' }
     },
     {
       global: { mainWindow: { isDestroyed: () => false } },
@@ -102,7 +114,7 @@ function screenshotModule(capture) {
   )
 }
 
-test('Windows capture reuses the subprocess preview for both renderer events', async () => {
+test('Windows capture uses the compatibility controller and keeps preview data valid', async () => {
   const capture = screenshotModule(async (width, height) => {
     assert.equal(width, 2195)
     assert.equal(height, 1235)
@@ -115,8 +127,6 @@ test('Windows capture reuses the subprocess preview for both renderer events', a
 })
 
 test('failed Windows capture reports failure without repeating the slow Electron capture', async () => {
-  const capture = screenshotModule(async () => {
-    throw new Error('Capture failed')
-  })
+  const capture = screenshotModule(async () => undefined)
   assert.equal(await capture.takeScreenshot(), undefined)
 })
