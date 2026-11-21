@@ -471,7 +471,7 @@ export default function SettingsPage() {
                     <label className="text-sm font-medium">
                       优先使用知识库
                       <span className="ml-2 text-xs font-light">
-                        面试问题涉及项目或经历时，优先依据已启用的 Markdown 资料回答
+                        按当前问题选取资料，短追问沿用已识别的项目
                       </span>
                     </label>
                     <Switch
@@ -484,7 +484,8 @@ export default function SettingsPage() {
                     />
                   </div>
                   <span className="text-xs text-gray-500">
-                    开启后，启用的资料会随面试请求发送到当前配置的 AI 接口；资料只保存在本机设置中。
+                    建议每个项目单独一份文件，写明个人职责、关键实现、方案取舍和验证过程。选中的片段会发送给当前配置的
+                    AI 接口。
                   </span>
                   {knowledgeMessage && (
                     <span className="text-xs text-gray-500">{knowledgeMessage}</span>

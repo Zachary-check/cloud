@@ -11,7 +11,7 @@ export interface InterviewKnowledgeDocument {
 export const MAX_INTERVIEW_KNOWLEDGE_DOCUMENTS = 5
 export const MAX_INTERVIEW_KNOWLEDGE_DOCUMENT_CHARS = 50000
 export const MAX_INTERVIEW_KNOWLEDGE_TOTAL_CHARS = 120000
-export const MAX_INTERVIEW_KNOWLEDGE_PROMPT_CHARS = 60000
+export const MAX_INTERVIEW_KNOWLEDGE_PROMPT_CHARS = 16000
 
 export function normalizeInterviewKnowledgeDocuments(
   documents: unknown

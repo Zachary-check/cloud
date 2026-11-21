@@ -108,10 +108,9 @@ function setup(open, options = {}) {
     },
     './save-screenshot': { saveScreenshotToDisk: noop },
     './ai': {
-      getSolutionStream: open,
-      getGeneralStream: open,
-      getFollowUpStream: (history, _question, signal) => open(history, signal),
-      getInterviewKnowledgeSources: () => []
+      getSolutionStream: (messages, { signal }) => open(messages, signal),
+      getGeneralStream: (messages, { signal }) => open(messages, signal),
+      getFollowUpStream: (history, _question, { signal }) => open(history, signal)
     },
     '../shared/dual-answer': load('src/shared/dual-answer.ts', {}),
     '../shared/interview-turn': load('src/shared/interview-turn.ts', {}),

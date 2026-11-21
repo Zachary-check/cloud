@@ -114,8 +114,8 @@ test('先建目录与头部，之后的回合按提问顺序追加', async () =>
   const dir = join(root, 'records')
   records.setInterviewRecordDir(dir)
 
-  records.noteRecordSources(['项目.md'])
   records.beginRecordedTurn('t1', 'question', '介绍一下项目')
+  records.noteRecordSources('t1', ['项目.md'])
   records.finishRecordedTurn('t1', '第一段回答', 'done')
   records.beginRecordedTurn('t2', 'followup', '追问一句')
   records.finishRecordedTurn('t2', '第二段回答', 'done')
@@ -202,9 +202,11 @@ test('关闭应用时把没结束的回答连同已收到的文字一起保存',
   records.setInterviewRecordDir(dir)
 
   records.beginRecordedTurn('t1', 'question', '被打断的提问')
+  records.noteRecordSources('t1', ['项目甲.md'])
   records.appendRecordedAnswer('t1', '已经收到的')
   records.appendRecordedAnswer('t1', '一部分回答')
   records.beginRecordedTurn('t2', 'question', '完整结束的提问')
+  records.noteRecordSources('t2', ['项目乙.md'])
   records.finishRecordedTurn('t2', '完整回答', 'done')
 
   await records.finalizeInterviewRecord()
@@ -216,6 +218,15 @@ test('关闭应用时把没结束的回答连同已收到的文字一起保存',
   // The finished turn is written once, by its own end event.
   assert.equal(text.match(/完整回答/g).length, 1)
   assert.equal(text.match(/^## /gm).length, 2)
+  const turns = text.split(/^## /m)
+  assert.match(
+    turns.find((turn) => turn.includes('被打断的提问')),
+    /知识库：项目甲\.md/
+  )
+  assert.match(
+    turns.find((turn) => turn.includes('完整结束的提问')),
+    /知识库：项目乙\.md/
+  )
 
   cleanup()
 })

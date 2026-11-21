@@ -63,22 +63,39 @@ function foldForMatch(text: string): string {
 }
 
 /**
- * Rules with triggers win over the fallback rule, in the order they were set.
- * The fallback (empty triggers) is only used when nothing more specific fits.
+ * Explicit triggers win in the order they were set. The default choice is
+ * conditional on being asked to pick a project, even without a trigger.
  */
 export function matchPinnedProjectRule(
   rules: PinnedProjectRule[],
-  query: string | undefined
+  query: string | undefined,
+  allowDefault = true
 ): PinnedProjectRule | null {
   const folded = query ? foldForMatch(query) : ''
   if (folded) {
     for (const rule of rules) {
       const keywords = splitPinnedKeywords(rule.keywords)
       if (!keywords.length) continue
-      if (keywords.some((keyword) => folded.includes(foldForMatch(keyword)))) return rule
+      if (
+        keywords.some((keyword) => {
+          const trigger = foldForMatch(keyword)
+          return trigger && folded.includes(trigger)
+        })
+      )
+        return rule
     }
   }
-  return rules.find((rule) => splitPinnedKeywords(rule.keywords).length === 0) ?? null
+  if (!allowDefault) return null
+  const picksProject =
+    /(?:最(?:满意|难|复杂|有成就感|有挑战)(?:的)?|哪(?:个|一个)).{0,6}(?:项目|经历)|(?:挑|举|选|介绍|说说|讲讲)(?:一)?个.{0,12}(?:项目|经历)|(?:项目|经历)(?:里|中).{0,8}哪(?:个|一个)/u.test(
+      query ?? ''
+    ) ||
+    /\b(?:favorite|proudest|most challenging|pick a|choose a|which)\b.{0,24}\bprojects?\b/i.test(
+      query ?? ''
+    )
+  return picksProject
+    ? (rules.find((rule) => splitPinnedKeywords(rule.keywords).length === 0) ?? null)
+    : null
 }
 
 /**
@@ -87,7 +104,7 @@ export function matchPinnedProjectRule(
  */
 export function buildPinnedProjectPrompt(
   rules: PinnedProjectRule[],
-  query: string | undefined
+  matched: PinnedProjectRule | null
 ): string {
   const usable = rules.filter((rule) => rule.project.trim())
   if (!usable.length) return ''
@@ -98,8 +115,11 @@ export function buildPinnedProjectPrompt(
     lines.push(
       keywords.length
         ? `- 提问中出现「${keywords.join('」「')}」等说法时，一律用「${rule.project}」作答`
-        : `- 其他需要挑选、推荐或比较项目的提问，一律用「${rule.project}」作答`
+        : `- 提问没有点名、没有要求换项目，且需要从候选人经历里挑选项目时，用「${rule.project}」作答`
     )
+    if (rule.note) {
+      lines.push(`  这条规则用来首次选项目时原样说「${rule.note}」。细节追问中已经讲过的说法略过。`)
+    }
   }
   lines.push(
     '- 命中规则时不得改选其他项目，也不得先并列比较其他项目再另选；回答中出现的项目名只能是规则指定的那个。'
@@ -108,10 +128,8 @@ export function buildPinnedProjectPrompt(
     '- 项目事实以知识库为准；知识库没有的细节用概括表述，不要编造具体数据，也不要因此改选其他项目。'
   )
 
-  const matched = matchPinnedProjectRule(usable, query)
   if (matched) {
     lines.push(`本次提问已经命中规则：必须用「${matched.project}」作答。`)
-    if (matched.note) lines.push(`固定说法（原样照说）：${matched.note}`)
   }
 
   return [

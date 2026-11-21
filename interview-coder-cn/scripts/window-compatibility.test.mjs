@@ -61,6 +61,20 @@ test('fresh settings use panel compatibility while retaining the optional transp
   assert.equal(defaults.showScreenshotPreview, false)
 })
 
+test('upgrade replaces only the old stock interview prompt and preserves a customized copy', () => {
+  const { options, defaults } = loadStore()
+  const scene = defaults.scenes.find((entry) => entry.id === 'interview')
+  const oldPrompt = readFileSync(resolve(dirname(storeFile), 'prompts/interview-legacy.md'), 'utf8')
+  const customized = oldPrompt + '\n明确个人负责的数据库模块。'
+  for (const [before, after] of [
+    [oldPrompt, scene.prompt],
+    [customized, customized]
+  ]) {
+    const state = options.merge({ scenes: [{ ...scene, prompt: before }] }, defaults)
+    assert.equal(state.scenes.find((entry) => entry.id === 'interview').prompt, after)
+  }
+})
+
 test('2.2.0 and later settings migrate to compatibility without losing AI or preview preferences', () => {
   for (const version of [13, 14]) {
     const { defaults, options } = loadStore()

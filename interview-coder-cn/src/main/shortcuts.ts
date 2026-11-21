@@ -19,12 +19,7 @@ import {
 } from './take-screenshot'
 import { nativeAnswerEvent } from './native-overlay'
 import { saveScreenshotToDisk } from './save-screenshot'
-import {
-  getSolutionStream,
-  getFollowUpStream,
-  getGeneralStream,
-  getInterviewKnowledgeSources
-} from './ai'
+import { getSolutionStream, getFollowUpStream, getGeneralStream } from './ai'
 import { formatDualAnswer } from '../shared/dual-answer'
 import {
   turnStatusFor,
@@ -420,11 +415,9 @@ function moveMainWindowBy(dx: number, dy: number) {
   mainWindow.setPosition(next.x, next.y)
 }
 
-/** Send the exact knowledge-base documents selected for the current request. */
-function sendKnowledgeSources(mainWindow: BrowserWindow, query?: string) {
-  const sources = settings.workMode === 'interview' ? getInterviewKnowledgeSources(query) : []
-  // Noted before the window guard: the record wants these even if nothing is on screen.
-  noteRecordSources(sources)
+/** Attach the sources from the prepared request to the corresponding turn. */
+function sendKnowledgeSources(mainWindow: BrowserWindow, turnId: string | null, sources: string[]) {
+  if (turnId) noteRecordSources(turnId, sources)
   if (mainWindow.isDestroyed()) return
   mainWindow.webContents.send('knowledge-sources', sources)
 }
@@ -569,8 +562,6 @@ async function handleInterviewTranscript(transcript: string) {
     mainWindow.webContents.send('screenshots-updated', recentScreenshots)
   }
 
-  sendKnowledgeSources(mainWindow, transcript)
-
   // Open the visible turn before the loading state and the first chunk, so the
   // answer has a turn to stream into and keeps the previous ones on screen.
   const turnId = randomUUID()
@@ -588,12 +579,12 @@ async function handleInterviewTranscript(transcript: string) {
   let assistantResponse = ''
 
   try {
-    const solutionStream = getGeneralStream(
-      conversationMessages,
-      streamContext.controller.signal,
-      transcript,
-      (model, reason) => notifyModelFallback(mainWindow, model, reason)
-    )
+    const solutionStream = getGeneralStream(conversationMessages, {
+      signal: streamContext.controller.signal,
+      question: transcript,
+      onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
+      onKnowledgeSources: (sources) => sendKnowledgeSources(mainWindow, turnId, sources)
+    })
     streamStarted = true
     try {
       for await (const chunk of solutionStream) {
@@ -763,19 +754,18 @@ const callbacks: Record<string, () => void> = {
       // raised again here, or the whole answer streams with no spinner and the
       // app looks as if it never called the model at all.
       mainWindow.webContents.send('ai-loading-start')
-      sendKnowledgeSources(mainWindow, transcriptionText || undefined)
       const turnId = randomUUID()
       sendTurnStart(mainWindow, turnId, 'screenshot', transcriptionText || '屏幕截图分析')
       let endedNaturally = true
       let streamStarted = false
       let assistantResponse = ''
       try {
-        const solutionStream = getSolutionStream(
-          conversationMessages,
-          streamContext.controller.signal,
-          transcriptionText || undefined,
-          (model, reason) => notifyModelFallback(mainWindow, model, reason)
-        )
+        const solutionStream = getSolutionStream(conversationMessages, {
+          signal: streamContext.controller.signal,
+          question: transcriptionText || undefined,
+          onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
+          onKnowledgeSources: (sources) => sendKnowledgeSources(mainWindow, turnId, sources)
+        })
         streamStarted = true
         try {
           for await (const chunk of solutionStream) {
@@ -921,7 +911,6 @@ const callbacks: Record<string, () => void> = {
       }
       mainWindow.webContents.send('screenshot-taken', displayShot)
       mainWindow.webContents.send('screenshots-updated', recentScreenshots)
-      sendKnowledgeSources(mainWindow, transcriptionText || undefined)
       // In interview mode a supplementary screenshot re-answers the question, so
       // it gets its own visible turn instead of overwriting the previous answer.
       // Other modes keep appending into a single answer and need no turn.
@@ -950,12 +939,12 @@ const callbacks: Record<string, () => void> = {
       let streamStarted = false
       let assistantResponse = ''
       try {
-        const solutionStream = getGeneralStream(
-          conversationMessages,
-          streamContext.controller.signal,
-          transcriptionText || undefined,
-          (model, reason) => notifyModelFallback(mainWindow, model, reason)
-        )
+        const solutionStream = getGeneralStream(conversationMessages, {
+          signal: streamContext.controller.signal,
+          question: transcriptionText || undefined,
+          onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
+          onKnowledgeSources: (sources) => sendKnowledgeSources(mainWindow, turnId, sources)
+        })
         streamStarted = true
         try {
           for await (const chunk of solutionStream) {
@@ -1285,20 +1274,17 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
   // and the answer it produced stay together in the transcript.
   const turnId = settings.workMode === 'interview' ? randomUUID() : null
   if (turnId) sendTurnStart(mainWindow, turnId, 'followup', question)
-  sendKnowledgeSources(mainWindow, settings.workMode === 'interview' ? question : undefined)
 
   let endedNaturally = true
   let streamStarted = false
   let assistantResponse = ''
 
   try {
-    const followUpStream = getFollowUpStream(
-      conversationMessages,
-      question,
-      streamContext.controller.signal,
-      settings.workMode === 'interview' ? question : undefined,
-      (model, reason) => notifyModelFallback(mainWindow, model, reason)
-    )
+    const followUpStream = getFollowUpStream(conversationMessages, question, {
+      signal: streamContext.controller.signal,
+      onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
+      onKnowledgeSources: (sources) => sendKnowledgeSources(mainWindow, turnId, sources)
+    })
     streamStarted = true
 
     try {

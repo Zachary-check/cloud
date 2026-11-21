@@ -6,6 +6,7 @@ import englishExamPrompt from './prompts/english-exam.md?raw'
 import aptitudeTestPrompt from './prompts/aptitude-test.md?raw'
 import generalQaPrompt from './prompts/general-qa.md?raw'
 import interviewPrompt from './prompts/interview.md?raw'
+import legacyInterviewPrompt from './prompts/interview-legacy.md?raw'
 import {
   MAX_INTERVIEW_KNOWLEDGE_DOCUMENTS,
   normalizeInterviewKnowledgeDocuments,
@@ -326,7 +327,10 @@ export const useSettingsStore = create<SettingsStore>()(
           ...createPresetScenes().map((p) => {
             const saved = persistedScenes.find((s) => s.id === p.id)
             // Restore the default prompt if a preset scene was left empty
-            return saved?.prompt.trim() ? saved : p
+            const savedPrompt = saved?.prompt.trim()
+            // Upgrade the old stock prompt while keeping user edits verbatim.
+            if (p.id === 'interview' && savedPrompt === legacyInterviewPrompt.trim()) return p
+            return saved && savedPrompt ? saved : p
           }),
           ...persistedScenes.filter((s) => !s.isPreset)
         ]

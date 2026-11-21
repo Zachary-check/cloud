@@ -1,9 +1,9 @@
 {
-  "version": "2.2.5",
-  "base_commit": "ac1233cdfb5ed94654f9b8d09ca1e122c421bdaf",
+  "version": "2.2.6",
+  "base_commit": "47762a9aed7efe04fa3b70fbeaed5cc7e3ab04ac",
   "electron_version": "37.3.1",
   "native_compiler": "Zig 0.13.0, x86_64-windows-gnu, C++17",
-  "automated_tests": 51,
+  "automated_tests": 39,
   "ui_smoke": {
     "launch": true,
     "capture_settings": true,
@@ -26,7 +26,7 @@
     "answer-overlay.exe": "d649c16197c8a88c04b1447af1417c5d06d79b2ac08c907938b586b320404837",
     "capture-helper.exe": "486a4b34debe80b4cf18ac506c078ff997c09746d2bbbd63be1e5f7acef548bb"
   },
-  "automated_test_scope": "Window order observations and recovery, hidden/stale/failed helpers, Windows audio startup, settings migration, panel/transparent appearance, toolbar and interview orchestration",
+  "automated_test_scope": "Interview routing, context and evidence selection, repeated questions, per-turn source attribution, existing settings migration, cancellation, and primary/backup streaming via a local compatible endpoint.",
   "baseline_full_regression": {
     "version": "2.2.1",
     "passed": 153
@@ -45,5 +45,6 @@
     "only_overlapping_recognized_clients": true,
     "repair_both_windows": true,
     "preserve_focus": true
-  }
+  },
+  "interview_answer_changes": "Adaptive depth, context-aware project references, repeated-question guidance and per-turn source attribution. One normal streaming request per turn."
 }
