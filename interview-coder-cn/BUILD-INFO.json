@@ -1,9 +1,9 @@
 {
-  "version": "2.2.6",
-  "base_commit": "47762a9aed7efe04fa3b70fbeaed5cc7e3ab04ac",
+  "version": "2.2.7",
+  "base_commit": "8034ce56fefb16c440565283fda5f59723c0603e",
   "electron_version": "37.3.1",
   "native_compiler": "Zig 0.13.0, x86_64-windows-gnu, C++17",
-  "automated_tests": 39,
+  "automated_tests": 40,
   "ui_smoke": {
     "launch": true,
     "capture_settings": true,
@@ -26,10 +26,10 @@
     "answer-overlay.exe": "d649c16197c8a88c04b1447af1417c5d06d79b2ac08c907938b586b320404837",
     "capture-helper.exe": "486a4b34debe80b4cf18ac506c078ff997c09746d2bbbd63be1e5f7acef548bb"
   },
-  "automated_test_scope": "Interview routing, context and evidence selection, repeated questions, per-turn source attribution, existing settings migration, cancellation, and primary/backup streaming via a local compatible endpoint.",
+  "automated_test_scope": "Interview project matching with numbered Markdown names, referential passage ranking, settings migration, records, cancellation, and local streaming fallback.",
   "baseline_full_regression": {
-    "version": "2.2.1",
-    "passed": 153
+    "version": "2.2.6",
+    "passed": 176
   },
   "windows_toolbar_native_opacity": 0.8,
   "windows_client_regression": "Moving the Iguokao login window covers the assistant while TOPMOST can remain set. Added actual native ordering/overlap checks with paired recovery. Real client validation pending.",
@@ -46,5 +46,5 @@
     "repair_both_windows": true,
     "preserve_focus": true
   },
-  "interview_answer_changes": "Adaptive depth, context-aware project references, repeated-question guidance and per-turn source attribution. One normal streaming request per turn."
+  "interview_answer_changes": "Recognize numbered project notes and prioritize the prior approach when the new question refers to it."
 }

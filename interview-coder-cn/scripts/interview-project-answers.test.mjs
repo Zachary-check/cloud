@@ -209,6 +209,69 @@ test('a late detail in a long Markdown section reaches the request within the ev
   assert.ok(supplied.length <= 16_060)
 })
 
+test('spoken project names resolve numbered notes and referential questions prefer the prior approach', async (t) => {
+  const stub = await endpoint(t)
+  const numberedName = '快速复习-02-订单履约.md'
+  const detail = 'LeaseToken 防止过期调度器覆盖新确认。长事务锁会把外部等待计入锁持有时间。'
+  const notes = {
+    ...deliveryProject,
+    name: numberedName,
+    content: [
+      ...Array.from(
+        { length: 5 },
+        (_value, index) =>
+          '## 旁支模块选型 ' + index + '\n' + '这个模块的方案考虑了约束、选型原因、替代做法和对比。'
+      ),
+      '## LeaseToken 的代价',
+      detail
+    ].join('\n\n')
+  }
+  const settings = settingsFor(stub.url, {
+    interviewKnowledgeBase: [
+      { ...inventoryProject, name: '01_库存告警.md' },
+      notes,
+      { id: 'other', name: '快速复习-03-报表服务.md', content: '报表选型与验证。', enabled: true }
+    ],
+    pinnedProjectRules: []
+  })
+  const ai = loadAi(settings)
+  const history = [
+    speech('介绍一下你觉得最难的项目，你负责哪部分？'),
+    { role: 'assistant', content: '最难的是订单履约，我负责调度状态和超时恢复。' }
+  ]
+  async function ask(question, recent, expectedName) {
+    const reports = []
+    await collect(
+      ai.getGeneralStream([...recent, speech(question)], {
+        question,
+        onKnowledgeSources: (names) => reports.push(Array.from(names))
+      })
+    )
+    assert.deepEqual(reports, [[expectedName]])
+    return system(stub.requests.at(-1))
+  }
+  const implementation = '那你们具体是怎么做的？失败时怎么办？'
+  const carried = await ask(implementation, history, numberedName)
+  assert.match(carried, /本轮关联项目：「订单履约」/)
+  history.push(speech(implementation), {
+    role: 'assistant',
+    content: '我们用 LeaseToken 校验调度资格。'
+  })
+  const decision = await ask('这种做法为什么合适？有没有考虑过别的方案？', history, numberedName)
+  assert.match(decision, /上一轮刚讲到的具体做法/)
+  assert.ok(decision.includes(detail), 'the relevant justification must survive the passage limit')
+  assert.doesNotMatch(decision, /文档：01_库存告警|文档：快速复习-03-报表服务/)
+
+  const switched = await ask('改讲库存告警，怎么验证这个方案？', history, '01_库存告警.md')
+  assert.doesNotMatch(switched, /上一轮刚讲到的具体做法/)
+
+  settings.pinnedProjectRules = [
+    { id: 'saved', keywords: '最满意', project: '快速复习-02-订单履约', note: '' }
+  ]
+  const pinned = await ask('你最满意的项目是哪个？', [], numberedName)
+  assert.match(pinned, /必须用「快速复习-02-订单履约」/)
+})
+
 test('default pins apply to choosing a project, while disabled project sources stay excluded', async (t) => {
   const stub = await endpoint(t)
   const settings = settingsFor(stub.url, {

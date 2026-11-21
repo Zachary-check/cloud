@@ -84,6 +84,8 @@ function getSystemPrompt(
   const guidance = [
     '结合已有问答和可用截图，只回答本轮提问。追问直接补充新细节，已介绍的背景最多一句带过。',
     references.changedTopic && '本轮切换了项目或话题，按当前提问重新判断项目。',
+    references.refersToPreviousApproach &&
+      '本轮指的是上一轮刚讲到的具体做法。先用一句指出所指的机制，再按本轮问题说明原因、代价或备选方案。上一轮谈了多个做法时，说明你在回答其中哪一个。用项目资料核实相关细节。',
     references.projects.length > 0 &&
       `本轮关联项目：${references.projects.map((name) => `「${name}」`).join('、')}。引用项目事实时与该项目的资料对应。`,
     references.repeated &&

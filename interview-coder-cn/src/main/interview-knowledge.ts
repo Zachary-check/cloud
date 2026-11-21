@@ -10,7 +10,7 @@ type Turn = { question: string; answer: string }
 
 const segmenter = new Intl.Segmenter('zh', { granularity: 'word' })
 const stopWords = new Set(
-  '介绍 一下 说说 讲讲 为什么 为何 怎么 如何 什么 哪些 哪个 可以 能否 这个 那个 那么 这么 刚才 前面 上面 当时 你们 项目 经历 详细 具体 继续 展开 how why what which please about would could project projects tell describe explain then and the you your'.split(
+  '介绍 一下 说说 讲讲 为什么 为何 怎么 如何 什么 哪些 哪个 可以 能否 这个 那个 那么 这么 刚才 前面 上面 当时 你们 我们 他们 项目 经历 详细 具体 继续 展开 how why what which please about would could project projects tell describe explain then and the you your'.split(
     ' '
   )
 )
@@ -19,6 +19,8 @@ const followUpPattern =
 const topicChangePattern =
   /换(?:个|一个)(?:项目|话题)|换一项经历|改讲|(?:不讲|不聊).{0,28}换成|另(?:一个|一项)项目|下(?:一题|一个项目)|与(?:该|这个)项目无关|(?:another|different|next) (?:project|topic)/i
 const projectQuestionPattern = /项目|经历|你们|负责|project|your (?:team|role)/i
+const previousApproachPattern =
+  /(?:这个|那个|这种|该|上述|刚才的|前面提到的)(?:方案|做法|方式|机制|设计)|为什么(?:这样|这么)|\b(?:this|that) (?:approach|design|implementation)\b/i
 const questionAspects: Array<[RegExp, string[]]> = [
   [
     /验证|测试|压测|怎么证明|效果|validate|verif|benchmark|test/i,
@@ -26,7 +28,7 @@ const questionAspects: Array<[RegExp, string[]]> = [
   ],
   [
     /为什么|选型|取舍|权衡|why|trade.?off/i,
-    ['约束', '取舍', '选型', '替代', '对比', '原因', 'tradeoff']
+    ['约束', '取舍', '选型', '替代', '对比', '原因', '代价', 'tradeoff']
   ],
   [
     /故障|踩坑|异常|失败|排查|failure|debug/i,
@@ -49,9 +51,25 @@ function project(name: string): Project {
   return { name, key: folded(name) }
 }
 
+/** A filing prefix belongs to the source label, not the spoken project name. */
+function spokenProject(title: Project): Project {
+  const name = title.name
+    .normalize('NFKC')
+    .replace(/^(?:\p{Script=Han}{1,16}\s*[-_–—]\s*)?\d{1,3}\s*[-_.、–—]\s*/u, '')
+    .trim()
+  const alias = project(name)
+  return alias.key.length >= 2 && /\p{L}/u.test(alias.key) ? alias : title
+}
+
 function namesIn(text: string, projects: Project[]): Project[] {
   const key = folded(text)
-  const matches = projects.filter((item) => item.key.length >= 2 && key.includes(item.key))
+  const matches = [
+    ...new Map(
+      projects
+        .filter((item) => item.key.length >= 2 && key.includes(item.key))
+        .map((item) => [item.key, item] as const)
+    ).values()
+  ]
   // A more specific title wins when two file names share the same prefix.
   return matches.filter(
     (item) => !matches.some((other) => other.key !== item.key && other.key.includes(item.key))
@@ -69,6 +87,10 @@ function resolveQuestion(question: string, titles: Project[], rules: PinnedProje
     pinnedRule,
     projects: pinnedRule ? [project(pinnedRule.project)] : named
   }
+}
+
+function continuesTopic(question: string): boolean {
+  return followUpPattern.test(question) || previousApproachPattern.test(question)
 }
 
 function messageText(message: ModelMessage): string {
@@ -169,6 +191,7 @@ export interface InterviewReferences {
   projects: string[]
   repeated: boolean
   changedTopic: boolean
+  refersToPreviousApproach: boolean
   pinnedRule: PinnedProjectRule | null
   excerpts: { name: string; content: string }[]
 }
@@ -183,36 +206,49 @@ export function selectInterviewReferences(
 ): InterviewReferences {
   const question = query?.trim() ?? ''
   const titles = documents.map(({ name }) => project(name.replace(/\.(md|markdown)$/i, '')))
+  const aliases = titles.map(spokenProject)
   const recent = latestTurns(history)
-  const target = resolveQuestion(question, titles, rules)
+  const previous = recent[0]
+  const previousAnswer = previous?.answer ?? ''
+  const target = resolveQuestion(question, aliases, rules)
+  const refersToPreviousApproach =
+    !target.changedTopic &&
+    !target.projects.length &&
+    Boolean(previousAnswer.trim()) &&
+    previousApproachPattern.test(target.current)
   let projects = target.projects
   let priorQuestion = ''
-  const followUp = !target.changedTopic && (manualFollowUp || followUpPattern.test(question))
+  const followUp = !target.changedTopic && (manualFollowUp || continuesTopic(question))
   if (!projects.length && followUp) {
     for (const turn of recent) {
-      const prior = resolveQuestion(turn.question, titles, rules)
+      const prior = resolveQuestion(turn.question, aliases, rules)
       projects = prior.projects
       if (!projects.length && projectQuestionPattern.test(prior.current)) {
-        projects = namesIn(turn.answer, titles)
+        projects = namesIn(turn.answer, aliases)
       }
       if (projects.length) {
         priorQuestion = turn.question
         break
       }
-      if (prior.changedTopic || (!manualFollowUp && !followUpPattern.test(turn.question))) break
+      if (prior.changedTopic || (!manualFollowUp && !continuesTopic(turn.question))) break
     }
   }
 
   const words = terms(target.current)
   const key = folded(question)
-  const previous = recent[0]
   const repeated = Boolean(
-    previous?.answer.trim() && key.length >= 4 && key === folded(previous.question)
+    previous && previousAnswer.trim() && key.length >= 4 && key === folded(previous.question)
   )
   const aspects = questionAspects.flatMap(([pattern, values]) =>
     pattern.test(target.current) ? values : []
   )
   const previousWords = terms(priorQuestion).filter((word) => !words.includes(word))
+  const approachWords =
+    refersToPreviousApproach && projects.length
+      ? terms(previousAnswer).filter(
+          (word) => !words.includes(word) && !projects.some(({ key }) => key.includes(folded(word)))
+        )
+      : []
   // A repeated question can use an adjacent detail from the same project if
   // the first answer already covered the most obvious matching passage.
   const additional = repeated && projects.length ? ['边界', '代价', '异常', '限制'] : []
@@ -222,6 +258,9 @@ export function selectInterviewReferences(
       termScore(searchable, words) * 4 +
       termScore(searchable, aspects) * 2 +
       termScore(searchable, previousWords) +
+      // In a referential question, a specific term from the previous answer
+      // carries more meaning than generic headings such as "方案" or "取舍".
+      Math.min(8, termScore(searchable, approachWords)) * 6 +
       termScore(searchable, additional)
     )
   }
@@ -262,6 +301,7 @@ export function selectInterviewReferences(
     projects: projects.map(({ name }) => name),
     repeated,
     changedTopic: target.changedTopic,
+    refersToPreviousApproach,
     pinnedRule: target.pinnedRule,
     excerpts
   }
