@@ -62,10 +62,18 @@ function foldForMatch(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
 }
 
-/**
- * Explicit triggers win in the order they were set. The default choice is
- * conditional on being asked to pick a project, even without a trigger.
- */
+export function isProjectChoiceQuestion(query: string): boolean {
+  return (
+    /(?:最(?:满意|难|复杂|有成就感|有挑战)(?:的)?|哪(?:个|一个)|代表性|挑一个|任选(?:一个)?|选个|举个).{0,18}(?:项目|经历)|(?:挑|举|选|介绍|说说|讲讲)(?:一)?个.{0,12}(?:项目|经历)|(?:项目|经历).{0,16}(?:选一个|你来选)|(?:项目|经历)(?:里|中).{0,8}哪(?:个|一个)/u.test(
+      query
+    ) ||
+    /\b(?:favorite|proudest|most challenging|pick a|choose a|which)\b.{0,24}\bprojects?\b/i.test(
+      query
+    )
+  )
+}
+
+/** Explicit triggers win in the order they were set. */
 export function matchPinnedProjectRule(
   rules: PinnedProjectRule[],
   query: string | undefined,
@@ -85,15 +93,7 @@ export function matchPinnedProjectRule(
         return rule
     }
   }
-  if (!allowDefault) return null
-  const picksProject =
-    /(?:最(?:满意|难|复杂|有成就感|有挑战)(?:的)?|哪(?:个|一个)).{0,6}(?:项目|经历)|(?:挑|举|选|介绍|说说|讲讲)(?:一)?个.{0,12}(?:项目|经历)|(?:项目|经历)(?:里|中).{0,8}哪(?:个|一个)/u.test(
-      query ?? ''
-    ) ||
-    /\b(?:favorite|proudest|most challenging|pick a|choose a|which)\b.{0,24}\bprojects?\b/i.test(
-      query ?? ''
-    )
-  return picksProject
+  return allowDefault && isProjectChoiceQuestion(query ?? '')
     ? (rules.find((rule) => splitPinnedKeywords(rule.keywords).length === 0) ?? null)
     : null
 }
@@ -104,10 +104,22 @@ export function matchPinnedProjectRule(
  */
 export function buildPinnedProjectPrompt(
   rules: PinnedProjectRule[],
-  matched: PinnedProjectRule | null
+  matched: PinnedProjectRule | null,
+  projectsResolved = false
 ): string {
   const usable = rules.filter((rule) => rule.project.trim())
   if (!usable.length) return ''
+
+  if (projectsResolved) {
+    const notes = usable.flatMap(({ project, note }) => (note ? [`- 「${project}」：${note}`] : []))
+    return notes.length
+      ? [
+          '## 本轮项目的预设说法',
+          '仅在首次介绍对应项目、且本轮资料支持该说法时使用。比较题仍需回答两边。',
+          ...notes
+        ].join('\n')
+      : ''
+  }
 
   const lines = ['以下是候选人预先设定的项目固定选择规则，必须遵守：']
   for (const rule of usable) {

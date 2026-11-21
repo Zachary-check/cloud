@@ -20,6 +20,12 @@ import { DEFAULT_INTERVIEW_TRIGGER_MUTE_MS } from '../shared/interview-trigger'
 import { normalizeCaptureSettings } from '../shared/capture'
 import { setNativeOverlayAppearance } from './native-overlay'
 
+let onWorkModeChange: ((previous: AppSettings['workMode']) => void) | undefined
+
+export function setWorkModeChangeHandler(handler: (previous: AppSettings['workMode']) => void) {
+  onWorkModeChange = handler
+}
+
 ipcMain.handle('getAppSettings', () => {
   return settings
 })
@@ -28,6 +34,7 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   const previousWorkMode = settings.workMode
   const previousDashscopeApiKey = settings.dashscopeApiKey
   Object.assign(settings, _settings)
+  if (settings.workMode !== previousWorkMode) onWorkModeChange?.(previousWorkMode)
   Object.assign(settings, normalizeCaptureSettings(settings))
   settings.windowCompatibilityMode = settings.windowCompatibilityMode !== false
   settings.textOnlyAnswers = settings.textOnlyAnswers !== false

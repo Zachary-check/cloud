@@ -4,8 +4,16 @@ import {
   type InterviewKnowledgeDocument
 } from '../shared/interview-knowledge'
 import { matchPinnedProjectRule, type PinnedProjectRule } from '../shared/pinned-project'
+import {
+  decideProject,
+  interviewDetailChoices,
+  interviewProjectCatalog,
+  isInterviewFollowUp,
+  projectKey,
+  refersToPreviousApproach,
+  type ProjectDecision
+} from './interview-project'
 
-type Project = { name: string; key: string }
 type Turn = { question: string; answer: string }
 
 const segmenter = new Intl.Segmenter('zh', { granularity: 'word' })
@@ -14,13 +22,6 @@ const stopWords = new Set(
     ' '
   )
 )
-const followUpPattern =
-  /刚才|前面|上面|之前提到|(?:这个|那个|该)(?:项目|方案)|你们|当时|^\s*(?:那|所以|继续|展开|再说)|^(?:怎么|如何)(?:验证|实现|处理|设计|排查|复现)|怎么(?:验证|实现|处理|设计)的|为什么(?:这样|这么)|详细说|具体说|^.{1,16}呢[?？。]?$|^\s*(?:and|so|then|why|how so|tell me more)\b/i
-const topicChangePattern =
-  /换(?:个|一个)(?:项目|话题)|换一项经历|改讲|(?:不讲|不聊).{0,28}换成|另(?:一个|一项)项目|下(?:一题|一个项目)|与(?:该|这个)项目无关|(?:another|different|next) (?:project|topic)/i
-const projectQuestionPattern = /项目|经历|你们|负责|project|your (?:team|role)/i
-const previousApproachPattern =
-  /(?:这个|那个|这种|该|上述|刚才的|前面提到的)(?:方案|做法|方式|机制|设计)|为什么(?:这样|这么)|\b(?:this|that) (?:approach|design|implementation)\b/i
 const questionAspects: Array<[RegExp, string[]]> = [
   [
     /验证|测试|压测|怎么证明|效果|validate|verif|benchmark|test/i,
@@ -40,59 +41,6 @@ const questionAspects: Array<[RegExp, string[]]> = [
   ]
 ]
 
-function folded(text: string): string {
-  return text
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}+#]/gu, '')
-}
-
-function project(name: string): Project {
-  return { name, key: folded(name) }
-}
-
-/** A filing prefix belongs to the source label, not the spoken project name. */
-function spokenProject(title: Project): Project {
-  const name = title.name
-    .normalize('NFKC')
-    .replace(/^(?:\p{Script=Han}{1,16}\s*[-_–—]\s*)?\d{1,3}\s*[-_.、–—]\s*/u, '')
-    .trim()
-  const alias = project(name)
-  return alias.key.length >= 2 && /\p{L}/u.test(alias.key) ? alias : title
-}
-
-function namesIn(text: string, projects: Project[]): Project[] {
-  const key = folded(text)
-  const matches = [
-    ...new Map(
-      projects
-        .filter((item) => item.key.length >= 2 && key.includes(item.key))
-        .map((item) => [item.key, item] as const)
-    ).values()
-  ]
-  // A more specific title wins when two file names share the same prefix.
-  return matches.filter(
-    (item) => !matches.some((other) => other.key !== item.key && other.key.includes(item.key))
-  )
-}
-
-function resolveQuestion(question: string, titles: Project[], rules: PinnedProjectRule[]) {
-  const change = topicChangePattern.exec(question)
-  const current = change ? question.slice(change.index + change[0].length) : question
-  const named = namesIn(current, titles)
-  const pinnedRule = matchPinnedProjectRule(rules, current, !change && !named.length)
-  return {
-    current,
-    changedTopic: Boolean(change),
-    pinnedRule,
-    projects: pinnedRule ? [project(pinnedRule.project)] : named
-  }
-}
-
-function continuesTopic(question: string): boolean {
-  return followUpPattern.test(question) || previousApproachPattern.test(question)
-}
-
 function messageText(message: ModelMessage): string {
   if (typeof message.content === 'string') return message.content
   return message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
@@ -107,7 +55,11 @@ function latestTurns(history: readonly ModelMessage[]): Turn[] {
     } else if (message.role === 'user') {
       const text = messageText(message)
       // Use only the question from the speech request's wrapper.
-      const question = text.match(/^这是面试官的语音提问：\n([\s\S]*?)\n\n请/)?.[1] ?? text
+      const question =
+        text.match(/^这是面试官的语音提问：\n([\s\S]*?)\n\n请/)?.[1] ??
+        text.match(/^这是语音转录内容：\n([\s\S]*?)\n\n同时附上屏幕截图/)?.[1] ??
+        text.match(/^这是下一部分截图和语音转录内容：\n([\s\S]*?)\n请结合/)?.[1] ??
+        text
       turns.push({ question, answer })
       answer = ''
     }
@@ -188,12 +140,42 @@ function excerpt(
 }
 
 export interface InterviewReferences {
-  projects: string[]
+  decision: ProjectDecision | null
   repeated: boolean
   changedTopic: boolean
   refersToPreviousApproach: boolean
+  detailChoices: string[]
+  missingProjects: string[]
+  pinnedRules: PinnedProjectRule[]
   pinnedRule: PinnedProjectRule | null
   excerpts: { name: string; content: string }[]
+}
+
+interface SelectionOptions {
+  manualFollowUp: boolean
+  previousProject?: string | null
+  knowledgeEnabled: boolean
+}
+
+/** Compatibility for generic documents when a prior free-choice answer named its project. */
+function legacyProjectFromHistory(
+  recent: Turn[],
+  catalog: ReturnType<typeof interviewProjectCatalog>,
+  rules: PinnedProjectRule[],
+  previousProject: string | null | undefined
+): string | null {
+  if (previousProject || catalog.usesProfiles) return previousProject ?? null
+  for (const turn of previousProject === undefined ? recent : recent.slice(0, 1)) {
+    const decision = decideProject(turn.question, null, catalog)
+    if (decision.intent === 'choose' && turn.answer.trim()) {
+      const { strong } = catalog.identify(turn.answer)
+      const pin = matchPinnedProjectRule(rules, decision.query)
+      return pin ? catalog.canonical(pin.project) : strong.length === 1 ? strong[0] : null
+    }
+    if (previousProject === undefined && decision.nextProject) return decision.nextProject
+    if (decision.reason !== 'context-unclear' || !isInterviewFollowUp(turn.question)) break
+  }
+  return null
 }
 
 /** Resolve the current project before ranking passages for the new question. */
@@ -202,51 +184,69 @@ export function selectInterviewReferences(
   rules: PinnedProjectRule[],
   query: string | undefined,
   history: readonly ModelMessage[],
-  manualFollowUp: boolean
+  { manualFollowUp, previousProject, knowledgeEnabled }: SelectionOptions
 ): InterviewReferences {
   const question = query?.trim() ?? ''
-  const titles = documents.map(({ name }) => project(name.replace(/\.(md|markdown)$/i, '')))
-  const aliases = titles.map(spokenProject)
+  const catalog = interviewProjectCatalog(
+    documents.map(({ name }) => name),
+    [...rules.map(({ project }) => project), ...(previousProject ? [previousProject] : [])]
+  )
   const recent = latestTurns(history)
   const previous = recent[0]
+  const previousQuestion = previous?.question ?? ''
   const previousAnswer = previous?.answer ?? ''
-  const target = resolveQuestion(question, aliases, rules)
-  const refersToPreviousApproach =
-    !target.changedTopic &&
-    !target.projects.length &&
-    Boolean(previousAnswer.trim()) &&
-    previousApproachPattern.test(target.current)
-  let projects = target.projects
-  let priorQuestion = ''
-  const followUp = !target.changedTopic && (manualFollowUp || continuesTopic(question))
-  if (!projects.length && followUp) {
-    for (const turn of recent) {
-      const prior = resolveQuestion(turn.question, aliases, rules)
-      projects = prior.projects
-      if (!projects.length && projectQuestionPattern.test(prior.current)) {
-        projects = namesIn(turn.answer, aliases)
-      }
-      if (projects.length) {
-        priorQuestion = turn.question
-        break
-      }
-      if (prior.changedTopic || (!manualFollowUp && !continuesTopic(turn.question))) break
-    }
+  const active = legacyProjectFromHistory(recent, catalog, rules, previousProject)
+  const routed = question ? decideProject(question, active, catalog) : null
+  // With no transcript a screenshot can start a visual question, including a
+  // typed follow-up about the image. Keep that path available after a new shot.
+  const imageFollowUp =
+    manualFollowUp &&
+    routed?.reason === 'context-unclear' &&
+    /^(?:这是屏幕截图|这是下一部分截图，请)/.test(previousQuestion) &&
+    !/项目|经历|\bproject\b/i.test(question)
+  const decision = imageFollowUp ? null : routed
+  const pinnedRule =
+    decision &&
+    (decision.intent === 'choose' || (!catalog.usesProfiles && decision.reason === 'general'))
+      ? matchPinnedProjectRule(rules, decision.query, decision.intent === 'choose')
+      : null
+  if (pinnedRule && decision) {
+    decision.intent = 'choose'
+    decision.projects = [catalog.canonical(pinnedRule.project)]
+    decision.reason = 'pinned'
   }
+  const projects = decision?.projects ?? []
+  const pinnedRules = !decision
+    ? rules
+    : pinnedRule
+      ? [pinnedRule]
+      : rules.filter(({ project }) => projects.includes(catalog.canonical(project)))
+  const current = decision?.query ?? question
+  const followUp = decision?.intent === 'continue'
+  const sameTopicApproach =
+    followUp && Boolean(previousAnswer.trim()) && refersToPreviousApproach(current)
+  const changedTopic = decision?.intent === 'switch' || decision?.reason === 'project-cleared'
+  const detailChoices = followUp
+    ? interviewDetailChoices(projects[0], current, `${previousQuestion}\n${previousAnswer}`)
+    : []
 
-  const words = terms(target.current)
-  const key = folded(question)
+  const words = terms(current)
+  const key = projectKey(question)
   const repeated = Boolean(
-    previous && previousAnswer.trim() && key.length >= 4 && key === folded(previous.question)
+    previousAnswer.trim() && key.length >= 4 && key === projectKey(previousQuestion)
   )
   const aspects = questionAspects.flatMap(([pattern, values]) =>
-    pattern.test(target.current) ? values : []
+    pattern.test(current) ? values : []
   )
-  const previousWords = terms(priorQuestion).filter((word) => !words.includes(word))
+  const previousWords = followUp
+    ? terms(previousQuestion).filter((word) => !words.includes(word))
+    : []
   const approachWords =
-    refersToPreviousApproach && projects.length
+    followUp && (sameTopicApproach || words.length < 2)
       ? terms(previousAnswer).filter(
-          (word) => !words.includes(word) && !projects.some(({ key }) => key.includes(folded(word)))
+          (word) =>
+            !words.includes(word) &&
+            !projects.some((project) => projectKey(project).includes(projectKey(word)))
         )
       : []
   // A repeated question can use an adjacent detail from the same project if
@@ -264,45 +264,71 @@ export function selectInterviewReferences(
       termScore(searchable, additional)
     )
   }
+  const legacyPinInCombinedNotes =
+    pinnedRule && !catalog.usesProfiles && !catalog.documents.includes(projects[0])
+  const unscoped =
+    !decision ||
+    (!catalog.usesProfiles && (decision.reason === 'general' || decision.reason === 'self-choice'))
   const ranked = documents
     .flatMap((document, index) => {
-      if (!document.enabled) return []
-      const score = relevance(document.name) * 3 + relevance(document.content)
-      return [{ document, score, index }]
+      if (!knowledgeEnabled || !document.enabled) return []
+      const title = catalog.documents[index]
+      const included =
+        unscoped ||
+        projects.includes(title) ||
+        (legacyPinInCombinedNotes && projectKey(document.content).includes(projectKey(projects[0])))
+      return included
+        ? [
+            {
+              document,
+              title,
+              score: relevance(document.name) * 3 + relevance(document.content),
+              index
+            }
+          ]
+        : []
     })
     .sort((a, b) => b.score - a.score || a.index - b.index)
-
-  const isProjectTitle = (title: Project) =>
-    projects.some(({ key }) => key && title.key.includes(key))
   const matching = ranked.filter(({ score }) => score > 0)
-  // Prefer the project's own files. A handwritten pin may only appear within a
-  // combined document, in which case use only documents mentioning that project.
-  const candidates = titles.some(isProjectTitle)
-    ? ranked.filter(({ index }) => isProjectTitle(titles[index]))
-    : projects.length
-      ? ranked.filter(({ document }) =>
-          projects.some(({ key }) => key && folded(document.content).includes(key))
-        )
-      : matching.length
-        ? matching
-        : ranked
+  let candidates = unscoped && matching.length ? matching : ranked
+  if (decision?.intent === 'compare') {
+    // Give each side a share of the existing budget, even if one project has
+    // more than one imported file under different titles.
+    candidates = projects.flatMap((project) => {
+      const best = ranked.find(({ title }) => title === project)
+      return best ? [best] : []
+    })
+  }
+  const missingProjects = projects.filter(
+    (project) =>
+      !candidates.some(({ title }) => title === project) &&
+      !(legacyPinInCombinedNotes && candidates.length)
+  )
   const excerpts: InterviewReferences['excerpts'] = []
   let remaining = MAX_INTERVIEW_KNOWLEDGE_PROMPT_CHARS
   for (const [index, { document }] of candidates.entries()) {
     if (remaining <= 0) break
     const budget = Math.min(remaining, Math.floor(remaining / (candidates.length - index)))
-    const focus = followUp || repeated || aspects.length > 0
+    const focus =
+      followUp ||
+      repeated ||
+      aspects.length > 0 ||
+      decision?.intent === 'switch' ||
+      decision?.intent === 'compare'
     const content = excerpt(document.content, budget, relevance, focus)
     excerpts.push({ name: document.name, content })
     remaining -= content.length
   }
 
   return {
-    projects: projects.map(({ name }) => name),
+    decision,
     repeated,
-    changedTopic: target.changedTopic,
-    refersToPreviousApproach,
-    pinnedRule: target.pinnedRule,
+    changedTopic,
+    refersToPreviousApproach: sameTopicApproach,
+    detailChoices,
+    missingProjects,
+    pinnedRules,
+    pinnedRule,
     excerpts
   }
 }
