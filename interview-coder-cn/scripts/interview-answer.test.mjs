@@ -67,7 +67,7 @@ function setup() {
       recordSessionBreak: () => record.push(['break'])
     },
     './native-overlay': { nativeAnswerEvent: () => {} },
-    './settings': { settings, setWorkModeChangeHandler: () => {} },
+    './settings': { settings },
     './state': { state: { inCoderPage: true } },
     './transcription': {
       getTranscriptionText: () => '',

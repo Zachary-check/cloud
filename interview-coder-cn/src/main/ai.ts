@@ -3,7 +3,6 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { settings, AppSettings } from './settings'
 import { normalizeInterviewKnowledgeDocuments } from '../shared/interview-knowledge'
 import { selectInterviewReferences, type InterviewReferences } from './interview-knowledge'
-import type { ProjectDecision } from './interview-project'
 import { buildPinnedProjectPrompt, normalizePinnedProjectRules } from '../shared/pinned-project'
 import { buildCodeLanguagePrompt } from '../shared/code-language'
 import {
@@ -36,8 +35,6 @@ function getKnowledgeBasePrompt(excerpts: InterviewReferences['excerpts']): stri
 interface AnswerStreamOptions {
   signal?: AbortSignal
   question?: string
-  previousProject?: string | null
-  onProjectDecision?: (decision: ProjectDecision) => void
   onFallback?: FallbackNotifier
   onKnowledgeSources?: (sources: string[]) => void
 }
@@ -45,21 +42,36 @@ interface AnswerStreamOptions {
 // The renderer supplies the editable interview preset. Only this turn's
 // resolved project, sources and conversation context are added here.
 function getSystemPrompt(
-  references: InterviewReferences | null,
+  options: AnswerStreamOptions,
+  history: readonly ModelMessage[],
+  followUp: boolean,
   multipleScreenshots: boolean
 ): string | undefined {
   const language = buildCodeLanguagePrompt(settings.codeLanguage)
+  const interview = settings.workMode === 'interview'
+  if (!interview) options.onKnowledgeSources?.([])
   if (settings.workMode === 'dual') return [DUAL_MODE_PROMPT, language].filter(Boolean).join('\n\n')
-  if (!references) {
+  if (!interview) {
     const extra = multipleScreenshots
       ? '注意：如果有多张截图，请结合所有截图内容进行完整分析，不要遗漏任何部分。'
       : ''
     return [settings.customPrompt, language, extra].filter(Boolean).join('\n\n') || undefined
   }
 
-  const decision = references.decision
-  const projects = decision?.projects ?? []
-  const projectNames = (names: string[]) => names.map((name) => `「${name}」`).join('、')
+  const rules = normalizePinnedProjectRules(settings.pinnedProjectRules)
+  const documents =
+    settings.interviewKnowledgeBaseEnabled === false
+      ? []
+      : normalizeInterviewKnowledgeDocuments(settings.interviewKnowledgeBase)
+  const references = selectInterviewReferences(
+    documents,
+    rules,
+    options.question,
+    history,
+    followUp
+  )
+  options.onKnowledgeSources?.(references.excerpts.map(({ name }) => name))
+
   const background =
     settings.shareInterviewContextWithAI && settings.interviewContext.trim()
       ? [
@@ -71,25 +83,13 @@ function getSystemPrompt(
       : ''
   const guidance = [
     '结合已有问答和可用截图，只回答本轮提问。追问直接补充新细节，已介绍的背景最多一句带过。',
-    references.changedTopic && '本轮切换了项目或话题，按下方确定的本轮项目回答。',
-    projects.length > 0 &&
-      `本轮关联项目：${projectNames(projects)}。当前项目范围已确定。仅用各自的本轮资料核实项目事实，旧话题用于衔接，不能替代本轮证据。`,
-    decision?.intent === 'compare' &&
-      '本轮需要比较两个项目。分别说明两边的做法和差异；其中一边资料不足时，说明该边的缺口。',
-    decision?.intent === 'general' &&
-      !references.excerpts.length &&
-      '本轮按通用知识题回答，无需关联候选人的项目经历。',
-    decision?.intent === 'choose' &&
-      !references.pinnedRule &&
-      '本轮由候选人自选一个项目。只用已知事实介绍，无法确定候选人经历时先问一句选哪段。',
-    references.missingProjects.length > 0 &&
-      `本轮没有可用的${projectNames(references.missingProjects)}项目资料。说明缺少哪些信息，不能用其他项目补全。`,
+    references.changedTopic && '本轮切换了项目或话题，按当前提问重新判断项目。',
     references.refersToPreviousApproach &&
-      '本轮指的是上一轮刚讲到的具体做法。能确定机制时用一句指出，再按本轮问题说明原因、代价或备选方案。无法确认所指的做法时先问一句。用项目资料核实相关细节。',
+      '本轮指的是上一轮刚讲到的具体做法。先用一句指出所指的机制，再按本轮问题说明原因、代价或备选方案。上一轮谈了多个做法时，说明你在回答其中哪一个。用项目资料核实相关细节。',
+    references.projects.length > 0 &&
+      `本轮关联项目：${references.projects.map((name) => `「${name}」`).join('、')}。引用项目事实时与该项目的资料对应。`,
     references.repeated &&
-      '同一提问已有一轮回答。本轮优先补充一项之前没说清的实现、取舍或验证细节。资料不足时一句话说明。面试官明确要求重述时照做。',
-    references.detailChoices.length > 0 &&
-      `上一轮提到了${projectNames(references.detailChoices)}，本轮没有明确指其中哪项。先用一句话问想具体了解哪个技术点，确认之前先不展开。`
+      '同一提问已有一轮回答。本轮优先补充一项之前没说清的实现、取舍或验证细节。资料不足时一句话说明。面试官明确要求重述时照做。'
   ]
     .filter(Boolean)
     .join('\n')
@@ -101,19 +101,11 @@ function getSystemPrompt(
       getKnowledgeBasePrompt(references.excerpts),
       background,
       guidance,
-      buildPinnedProjectPrompt(
-        references.pinnedRules,
-        references.pinnedRule,
-        Boolean(decision && !references.pinnedRule)
-      )
+      buildPinnedProjectPrompt(rules, references.pinnedRule)
     ]
       .filter(Boolean)
       .join('\n\n') || undefined
   )
-}
-
-async function* askWhichProject(signal?: AbortSignal) {
-  if (!signal?.aborted) yield '您想听哪个项目？'
 }
 
 function getModel(_settings: AppSettings) {
@@ -205,25 +197,12 @@ function createAnswerStream(
 ) {
   // Prepare once so the primary and backup use identical sources and guidance.
   const requestMessages = [...messages]
-  const references =
-    settings.workMode === 'interview'
-      ? selectInterviewReferences(
-          normalizeInterviewKnowledgeDocuments(settings.interviewKnowledgeBase),
-          normalizePinnedProjectRules(settings.pinnedProjectRules),
-          options.question,
-          requestMessages.slice(0, -1),
-          {
-            manualFollowUp: followUp,
-            previousProject: options.previousProject,
-            knowledgeEnabled: settings.interviewKnowledgeBaseEnabled !== false
-          }
-        )
-      : null
-  if (references?.decision) options.onProjectDecision?.(references.decision)
-  options.onKnowledgeSources?.(references?.excerpts.map(({ name }) => name) ?? [])
-  if (references?.decision?.intent === 'clarify') return askWhichProject(options.signal)
-
-  const system = getSystemPrompt(references, multipleScreenshots)
+  const system = getSystemPrompt(
+    options,
+    requestMessages.slice(0, -1),
+    followUp,
+    multipleScreenshots
+  )
   const candidates = getCandidates()
   return streamWithFallback(candidates, {
     signal: options.signal,

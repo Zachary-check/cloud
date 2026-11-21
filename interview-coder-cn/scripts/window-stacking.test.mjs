@@ -169,7 +169,7 @@ function setup() {
     './interview-record': {},
     './state': { state: appState },
     './native-overlay': { nativeAnswerEvent: () => {} },
-    './settings': { settings: {}, setWorkModeChangeHandler: noop },
+    './settings': { settings: {} },
     './transcription': { setInterviewTriggerHandler: noop }
   })
   handles.get('initShortcuts')(null, { hideOrShowMainWindow: { key: 'Control+H' } })

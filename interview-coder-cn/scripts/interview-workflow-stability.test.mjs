@@ -116,7 +116,7 @@ function setup(open, options = {}) {
     '../shared/interview-turn': load('src/shared/interview-turn.ts', {}),
     './interview-record': record,
     './native-overlay': { nativeAnswerEvent: () => {} },
-    './settings': { settings, setWorkModeChangeHandler: noop },
+    './settings': { settings },
     './state': { state },
     './transcription': {
       getTranscriptionText: () => '',

@@ -20,7 +20,6 @@ import {
 import { nativeAnswerEvent } from './native-overlay'
 import { saveScreenshotToDisk } from './save-screenshot'
 import { getSolutionStream, getFollowUpStream, getGeneralStream } from './ai'
-import type { ProjectDecision } from './interview-project'
 import { formatDualAnswer } from '../shared/dual-answer'
 import {
   turnStatusFor,
@@ -35,7 +34,7 @@ import {
   recordSessionBreak
 } from './interview-record'
 import { state } from './state'
-import { settings, setWorkModeChangeHandler } from './settings'
+import { settings } from './settings'
 import {
   getTranscriptionText,
   clearTranscriptionText,
@@ -155,19 +154,7 @@ let conversationMessages: ModelMessage[] = []
 let recentScreenshots: string[] = [] // 最近截图，水平预览 (限5张)
 let hasAppendSeparator = false
 let conversationWorkMode: 'written' | 'interview' | 'dual' | null = null
-let interviewProject: string | null = null
-
-function interviewProjectOptions(stream: StreamContext) {
-  return {
-    previousProject: interviewProject,
-    onProjectDecision: (decision: ProjectDecision) => {
-      // Selection is synchronous at submission. No stream result can change it.
-      if (currentStreamContext === stream && settings.workMode === 'interview') {
-        interviewProject = decision.nextProject
-      }
-    }
-  }
-}
+let interviewRequestSequence = 0
 
 const FRONT_REASSERT_DURATION = 8000
 const FRONT_REASSERT_INTERVAL = 100
@@ -403,6 +390,7 @@ async function captureForRequest(id: number): Promise<string | void> {
 }
 
 export function shutdownActiveRequests(): void {
+  interviewRequestSequence++
   abortCurrentStream('new-request')
 }
 
@@ -491,6 +479,7 @@ function trimConversationHistory(): void {
 }
 
 async function handleInterviewTranscript(transcript: string) {
+  const requestSequence = ++interviewRequestSequence
   const mainWindow = global.mainWindow
   if (
     !mainWindow ||
@@ -506,7 +495,7 @@ async function handleInterviewTranscript(transcript: string) {
   }
 
   abortCurrentStream('new-request')
-  const captureId = captureSequence
+  currentStreamContext = null
   // Replace the visible answer for every question, but keep conversationMessages
   // so follow-up questions still have the preceding project/interview context.
   publishSolution(mainWindow, 'clear')
@@ -515,7 +504,7 @@ async function handleInterviewTranscript(transcript: string) {
 
   let screenshotData: string | null = null
   if (settings.interviewIncludeScreenshot) {
-    const capturedScreenshot = await captureForRequest(captureId)
+    const capturedScreenshot = await captureForRequest(captureSequence)
     if (capturedScreenshot) {
       screenshotData = capturedScreenshot
       saveScreenshotToDisk(screenshotData)
@@ -523,7 +512,7 @@ async function handleInterviewTranscript(transcript: string) {
   }
 
   if (
-    captureId !== captureSequence ||
+    requestSequence !== interviewRequestSequence ||
     mainWindow.isDestroyed() ||
     !state.inCoderPage ||
     settings.workMode !== 'interview'
@@ -536,7 +525,6 @@ async function handleInterviewTranscript(transcript: string) {
   if (startsNewConversation) {
     conversationMessages = []
     conversationWorkMode = 'interview'
-    interviewProject = null
   }
 
   const userMessage: ModelMessage = screenshotData
@@ -592,7 +580,6 @@ async function handleInterviewTranscript(transcript: string) {
 
   try {
     const solutionStream = getGeneralStream(conversationMessages, {
-      ...interviewProjectOptions(streamContext),
       signal: streamContext.controller.signal,
       question: transcript,
       onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
@@ -668,15 +655,6 @@ async function handleInterviewTranscript(transcript: string) {
 }
 
 setInterviewTriggerHandler(handleInterviewTranscript)
-setWorkModeChangeHandler((previous) => {
-  if (previous !== 'interview' && settings.workMode !== 'interview') return
-  abortCurrentStream('new-request')
-  conversationMessages = []
-  conversationWorkMode = null
-  interviewProject = null
-  const window = global.mainWindow
-  if (window && !window.isDestroyed()) window.webContents.send('ai-loading-end')
-})
 const callbacks: Record<string, () => void> = {
   hideOrShowMainWindow: async () => {
     const mainWindow = global.mainWindow
@@ -755,7 +733,6 @@ const callbacks: Record<string, () => void> = {
         }
       ]
       conversationWorkMode = settings.workMode
-      interviewProject = null
       trimConversationHistory()
 
       const streamContext: StreamContext = {
@@ -784,7 +761,6 @@ const callbacks: Record<string, () => void> = {
       let assistantResponse = ''
       try {
         const solutionStream = getSolutionStream(conversationMessages, {
-          ...interviewProjectOptions(streamContext),
           signal: streamContext.controller.signal,
           question: transcriptionText || undefined,
           onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
@@ -964,7 +940,6 @@ const callbacks: Record<string, () => void> = {
       let assistantResponse = ''
       try {
         const solutionStream = getGeneralStream(conversationMessages, {
-          ...interviewProjectOptions(streamContext),
           signal: streamContext.controller.signal,
           question: transcriptionText || undefined,
           onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
@@ -1041,6 +1016,7 @@ const callbacks: Record<string, () => void> = {
 
   // Stop current AI solution stream
   stopSolutionStream: () => {
+    interviewRequestSequence++
     abortCurrentStream('user')
     const window = global.mainWindow
     if (window && !window.isDestroyed()) {
@@ -1305,15 +1281,10 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
 
   try {
     const followUpStream = getFollowUpStream(conversationMessages, question, {
-      ...interviewProjectOptions(streamContext),
       signal: streamContext.controller.signal,
       onFallback: (model, reason) => notifyModelFallback(mainWindow, model, reason),
       onKnowledgeSources: (sources) => sendKnowledgeSources(mainWindow, turnId, sources)
     })
-    const userMessage: ModelMessage = { role: 'user', content: [{ type: 'text', text: question }] }
-    // Keep a submitted manual question even when its answer is interrupted,
-    // matching the voice path and preserving context for the next short turn.
-    if (turnId) conversationMessages.push(userMessage)
     streamStarted = true
 
     try {
@@ -1342,7 +1313,15 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
       }
     } else if (endedNaturally) {
       // Update conversation history with user question and assistant response
-      if (!turnId) conversationMessages.push(userMessage)
+      conversationMessages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: question
+          }
+        ]
+      })
       if (assistantResponse) {
         conversationMessages.push({
           role: 'assistant',
