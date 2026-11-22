@@ -24,7 +24,8 @@ function setup() {
   }
   let turnSequence = 0
   let handleTranscript
-  async function* stream(messages) {
+  async function* stream(messages, options) {
+    options.onKnowledgeSources(settings.workMode === 'interview' ? ['项目.md'] : [])
     requests.push(JSON.parse(JSON.stringify(messages)))
     yield `回答${requests.length}`
   }
@@ -43,6 +44,8 @@ function setup() {
       ensureWindowOnScreen: (window) => window
     },
     './take-screenshot': {
+      cancelPendingCapture: () => {},
+      getCaptureError: () => undefined,
       takeScreenshot: async () => 'test-image',
       // shortcuts.ts downscales previews before sending them to the renderer
       toDisplayThumbnail: (data) => data
@@ -51,9 +54,8 @@ function setup() {
     './ai': {
       getSolutionStream: stream,
       getGeneralStream: stream,
-      getFollowUpStream: (messages, question) =>
-        stream([...messages, { role: 'user', content: question }]),
-      getInterviewKnowledgeSources: () => ['项目.md']
+      getFollowUpStream: (messages, question, options) =>
+        stream([...messages, { role: 'user', content: question }], options)
     },
     '../shared/dual-answer': {},
     '../shared/interview-turn': { turnStatusFor },
@@ -61,9 +63,10 @@ function setup() {
       beginRecordedTurn: (id, kind, question) => record.push(['begin', id, kind, question]),
       appendRecordedAnswer: (id, chunk) => record.push(['chunk', id, chunk]),
       finishRecordedTurn: (id, answer, status) => record.push(['end', id, answer, status]),
-      noteRecordSources: (sources) => record.push(['sources', ...sources]),
+      noteRecordSources: (id, sources) => record.push(['sources', id, ...sources]),
       recordSessionBreak: () => record.push(['break'])
     },
+    './native-overlay': { nativeAnswerEvent: () => {} },
     './settings': { settings },
     './state': { state: { inCoderPage: true } },
     './transcription': {
@@ -174,11 +177,10 @@ test('every turn is written to the local Markdown record and closed with its ans
     app.record.filter(([event]) => event === 'chunk'),
     [['chunk', 'turn-1', '回答1']]
   )
-  // The knowledge base belongs to the turn that used it, whichever order the
-  // two broadcasts happen in.
+  // The sources belong to the turn that used them.
   assert.deepEqual(
     app.record.find(([event]) => event === 'sources'),
-    ['sources', '项目.md']
+    ['sources', 'turn-1', '项目.md']
   )
 })
 

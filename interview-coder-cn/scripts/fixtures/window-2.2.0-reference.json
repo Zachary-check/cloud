@@ -1,0 +1,16 @@
+{
+  "version": "2.2.0",
+  "sourceCommit": "71bfd0f170f5790d6cdf7c8f44501fab1272b462",
+  "answer": {
+    "textOnly": false,
+    "background": "oklch(0.551 0.027 264.364)",
+    "headerBackground": "oklab(0.373 -0.00605999 -0.0334556 / 0.8)",
+    "bodyOpacity": "0.8"
+  },
+  "toolbar": {
+    "textOnly": false,
+    "background": "oklab(0.373 -0.00605999 -0.0334556 / 0.8)",
+    "color": "rgb(255, 255, 255)",
+    "bodyOpacity": "1"
+  }
+}

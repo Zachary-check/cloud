@@ -6,15 +6,20 @@ import { DUAL_TOOLBAR_WIDTH } from '../shared/toolbar-layout'
 const TOOLBAR_WIDTH = 404
 const TOOLBAR_HEIGHT = 44
 const TOOLBAR_INSET = 4
-/** Mirrors the renderer's default opacity setting, until the renderer syncs the real one */
-const DEFAULT_OPACITY = 0.8
-
+// Preserve the default native alpha used in 2.2.0.
+// Apply it once, never multiply it by answer opacity or settings sync.
+export const WINDOWS_TOOLBAR_OPACITY = 0.8
 let toolbarWindow: BrowserWindow | null = null
 let ownerWindow: BrowserWindow | null = null
 /** Whether the renderer wants the toolbar on screen (main page + enabled in settings) */
 let isToolbarWanted = false
-let toolbarOpacity = DEFAULT_OPACITY
 let toolbarWorkMode: 'written' | 'interview' | 'dual' = 'written'
+let toolbarHoverDelay = 0
+let toolbarTextOnly = false
+let toolbarTheme: 'light' | 'dark' = 'light'
+let lastRepaintAt = 0
+let lastWorkArea: Electron.Rectangle | null = null
+const REPAINT_INTERVAL_MS = 2000
 /**
  * The size the user dragged the toolbar to, tracked here instead of being read
  * back off the window. Windows encloses in both directions of the DIP <-> pixel
@@ -67,7 +72,7 @@ export function createToolbarWindow(parent: BrowserWindow): void {
   ownerWindow = parent
 
   toolbarWindow.setMenuBarVisibility(false)
-  toolbarWindow.setOpacity(toolbarOpacity)
+  if (process.platform === 'win32') toolbarWindow.setOpacity(WINDOWS_TOOLBAR_OPACITY)
   toolbarWindow.setAlwaysOnTop(true, 'screen-saver', 2)
   toolbarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   toolbarWindow.setContentProtection(true)
@@ -78,11 +83,13 @@ export function createToolbarWindow(parent: BrowserWindow): void {
   // by design; hover uses only the cursor poller below. Forwarded DOM events
   // must not compete with OS samples to unlock an already executed action.
   toolbarWindow.setIgnoreMouseEvents(true, { forward: true })
+  toolbarWindow.webContents.on('did-finish-load', publishToolbarSettings)
 
   parent.on('move', syncToolbarBounds)
   parent.on('resize', syncToolbarBounds)
   parent.on('show', showToolbar)
   parent.on('hide', hideToolbar)
+  parent.on('focus', refreshToolbar)
   parent.on('closed', () => {
     stopCursorTracking()
     if (toolbarWindow && !toolbarWindow.isDestroyed()) toolbarWindow.close()
@@ -93,7 +100,7 @@ export function createToolbarWindow(parent: BrowserWindow): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     toolbarWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/toolbar`)
   } else {
-    toolbarWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'toolbar' })
+    toolbarWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/toolbar' })
   }
 }
 
@@ -103,7 +110,24 @@ function syncToolbarBounds(): void {
   if (!ownerWindow || ownerWindow.isDestroyed()) return
 
   const mainBounds = ownerWindow.getBounds()
-  const workArea = screen.getDisplayMatching(mainBounds).workArea
+  const display = screen.getDisplayMatching(mainBounds)
+  const usableArea = (area?: Electron.Rectangle): area is Electron.Rectangle =>
+    !!area &&
+    Number.isFinite(area.x) &&
+    Number.isFinite(area.y) &&
+    area.width >= 44 &&
+    area.height >= TOOLBAR_HEIGHT
+  const available = [display.workArea, display.bounds].find(usableArea)
+  if (available) lastWorkArea = available
+  // Display metrics can briefly be empty while the desktop/display changes.
+  // Never turn that transient state into a one-pixel native toolbar.
+  const workArea = available ??
+    lastWorkArea ?? {
+      x: mainBounds.x,
+      y: mainBounds.y,
+      width: Math.max(TOOLBAR_WIDTH, mainBounds.width),
+      height: Math.max(TOOLBAR_HEIGHT, mainBounds.height)
+    }
   // Keep whatever size the user dragged it to — but never read it back off the
   // window; that round trip is what inflates the toolbar (see toolbarSize)
   const width = Math.min(
@@ -111,12 +135,22 @@ function syncToolbarBounds(): void {
     workArea.width
   )
   const height = Math.min(toolbarSize.height, workArea.height)
-  toolbarWindow.setBounds({
+  const next = {
     x: Math.min(Math.max(mainBounds.x, workArea.x), workArea.x + workArea.width - width),
     y: Math.max(workArea.y, mainBounds.y - height - TOOLBAR_INSET),
     width,
     height
-  })
+  }
+  const current = toolbarWindow.getBounds()
+  // Read only to skip redundant native writes, never as the source of size.
+  // One DIP of tolerance also avoids fighting fractional-scale rounding.
+  if (
+    Math.abs(current.x - next.x) > 1 ||
+    Math.abs(current.y - next.y) > 1 ||
+    Math.abs(current.width - next.width) > 1 ||
+    Math.abs(current.height - next.height) > 1
+  )
+    toolbarWindow.setBounds(next)
 }
 
 /**
@@ -138,6 +172,9 @@ function startCursorTracking(): void {
   if (cursorTimer) return
   cursorTimer = setInterval(() => {
     if (!toolbarWindow || toolbarWindow.isDestroyed() || !toolbarWindow.isVisible()) return
+    // Re-submit a tiny transparent surface if Windows loses its cached frame.
+    // This never changes native alpha, focus, position or topmost ordering.
+    if (Date.now() - lastRepaintAt >= REPAINT_INTERVAL_MS) refreshToolbar()
     const point = screen.getCursorScreenPoint()
     const bounds = toolbarWindow.getBounds()
     const inside =
@@ -182,6 +219,7 @@ export function showToolbar(): void {
 
   syncToolbarBounds()
   toolbarWindow.showInactive()
+  refreshToolbar()
   startCursorTracking()
 }
 
@@ -222,15 +260,37 @@ export function setToolbarWanted(wanted: boolean): void {
   }
 }
 
-/**
- * Keep the toolbar as translucent as the main window. The main window applies
- * opacity to its body via CSS; the toolbar is nothing but that bar, so the same
- * value is applied to the whole window (no-op on Linux).
- */
-export function setToolbarOpacity(opacity: number): void {
-  toolbarOpacity = opacity
+function refreshToolbar(): void {
+  if (!toolbarWindow || toolbarWindow.isDestroyed() || !toolbarWindow.isVisible()) return
+  syncToolbarBounds()
+  lastRepaintAt = Date.now()
+  toolbarWindow.webContents.invalidate()
+}
+
+function publishToolbarSettings(): void {
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return
-  toolbarWindow.setOpacity(opacity)
+  toolbarWindow.webContents.send('sync-toolbar-settings', {
+    hoverDelay: toolbarHoverDelay,
+    workMode: toolbarWorkMode,
+    textOnlyAnswers: toolbarTextOnly
+  })
+  toolbarWindow.webContents.send('background-theme', toolbarTheme)
+  refreshToolbar()
+}
+
+export function getToolbarBackgroundTheme(): 'light' | 'dark' {
+  return toolbarTheme
+}
+
+export function syncToolbarBackgroundTheme(theme: 'light' | 'dark'): void {
+  toolbarTheme = theme
+  if (!toolbarWindow || toolbarWindow.isDestroyed()) return
+  toolbarWindow.webContents.send('background-theme', theme)
+}
+
+export function getToolbarSampleRegion(): Electron.Rectangle | null {
+  if (!toolbarWindow || toolbarWindow.isDestroyed() || !toolbarWindow.isVisible()) return null
+  return screen.dipToScreenRect(toolbarWindow, toolbarWindow.getBounds())
 }
 
 /**
@@ -240,13 +300,18 @@ export function setToolbarOpacity(opacity: number): void {
  */
 export function syncToolbarSettings(
   hoverDelay: number,
-  workMode: 'written' | 'interview' | 'dual'
+  workMode: 'written' | 'interview' | 'dual',
+  textOnlyAnswers = toolbarTextOnly
 ): void {
   const modeChanged = toolbarWorkMode !== workMode
+  const changed =
+    modeChanged || toolbarHoverDelay !== hoverDelay || toolbarTextOnly !== textOnlyAnswers
   toolbarWorkMode = workMode
+  toolbarHoverDelay = hoverDelay
+  toolbarTextOnly = textOnlyAnswers
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return
   if (modeChanged && toolbarWindow.isVisible()) syncToolbarBounds()
-  toolbarWindow.webContents.send('sync-toolbar-settings', { hoverDelay, workMode })
+  if (changed) publishToolbarSettings()
 }
 
 /** Reclaim the top spot alongside the main window, without ever revealing a hidden toolbar */
@@ -256,4 +321,9 @@ export function reassertToolbarTopMost(level: number, aggressive: boolean): void
     toolbarWindow.setAlwaysOnTop(true, 'screen-saver', level)
   }
   if (aggressive) toolbarWindow.moveTop()
+}
+
+export function getToolbarNativeHandle(): string | null {
+  if (!toolbarWindow || toolbarWindow.isDestroyed() || !toolbarWindow.isVisible()) return null
+  return toolbarWindow.getNativeWindowHandle().readBigUInt64LE().toString()
 }

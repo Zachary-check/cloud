@@ -2,7 +2,7 @@ import { app, dialog, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
-import { setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
+import { syncToolbarSettings } from './toolbar-window'
 import {
   setInterviewTriggerDelayMs,
   setInterviewTriggerMuteMs,
@@ -17,6 +17,8 @@ import {
 } from '../shared/interview-knowledge'
 import type { PinnedProjectRule } from '../shared/pinned-project'
 import { DEFAULT_INTERVIEW_TRIGGER_MUTE_MS } from '../shared/interview-trigger'
+import { normalizeCaptureSettings } from '../shared/capture'
+import { setNativeOverlayAppearance } from './native-overlay'
 
 ipcMain.handle('getAppSettings', () => {
   return settings
@@ -26,14 +28,23 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   const previousWorkMode = settings.workMode
   const previousDashscopeApiKey = settings.dashscopeApiKey
   Object.assign(settings, _settings)
+  Object.assign(settings, normalizeCaptureSettings(settings))
+  settings.windowCompatibilityMode = settings.windowCompatibilityMode !== false
+  settings.textOnlyAnswers = settings.textOnlyAnswers !== false
+  settings.showScreenshotPreview = settings.showScreenshotPreview === true
+  const textOnly = settings.textOnlyAnswers && !settings.windowCompatibilityMode
+  if ('textOnlyAnswers' in _settings || 'windowCompatibilityMode' in _settings)
+    setNativeOverlayAppearance(textOnly)
   if ('hideDockIcon' in _settings) {
     applyDockVisibility(settings.hideDockIcon)
   }
-  if ('opacity' in _settings) {
-    setToolbarOpacity(settings.opacity)
-  }
-  if ('toolbarHoverDelay' in _settings || settings.workMode !== previousWorkMode) {
-    syncToolbarSettings(settings.toolbarHoverDelay, settings.workMode)
+  if (
+    'toolbarHoverDelay' in _settings ||
+    'textOnlyAnswers' in _settings ||
+    'windowCompatibilityMode' in _settings ||
+    settings.workMode !== previousWorkMode
+  ) {
+    syncToolbarSettings(settings.toolbarHoverDelay, settings.workMode, textOnly)
   }
   if ('interviewTriggerDelayMs' in _settings) {
     setInterviewTriggerDelayMs(settings.interviewTriggerDelayMs)
@@ -131,6 +142,7 @@ ipcMain.handle(
 )
 
 export const settings = {
+  ...normalizeCaptureSettings({}),
   apiBaseURL: process.env.API_BASE_URL || '',
   apiKey: process.env.API_KEY || '',
   model: process.env.MODEL || '',
@@ -152,6 +164,9 @@ export const settings = {
   codeLanguage: '',
   /** Kept in sync with the renderer so the overlay toolbar can match the main window */
   opacity: 0.8,
+  windowCompatibilityMode: true,
+  textOnlyAnswers: true,
+  showScreenshotPreview: false,
   /**
    * Dwell time in ms before hovering a toolbar button fires it; 0 disables hover
    * triggering. The real default lives in the renderer store: App.tsx fills blank

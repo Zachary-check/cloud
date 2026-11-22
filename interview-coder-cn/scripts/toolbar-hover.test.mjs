@@ -48,6 +48,9 @@ function setup(action = 'decreaseOpacity', workMode = 'written') {
     getAppSettings: async () => ({ toolbarHoverDelay: 1000, workMode: 'written' }),
     onSyncToolbarSettings: noop,
     removeSyncToolbarSettingsListener: noop,
+    getBackgroundTheme: async () => 'light',
+    onBackgroundTheme: noop,
+    removeBackgroundThemeListener: noop,
     onToolbarCursor: (handler) => {
       cursorHandler = handler
     },

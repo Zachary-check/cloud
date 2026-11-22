@@ -27,7 +27,17 @@ process.on('uncaughtException', (error) => {
   console.error(error)
 })
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { revealMainWindow } from './shortcuts'
+import {
+  revealMainWindow,
+  shutdownActiveRequests,
+  triggerNativeAction,
+  getWindowOrderTarget,
+  repairWindowOrder
+} from './shortcuts'
+import { initCaptureController } from './capture-controller'
+import { initNativeOverlay } from './native-overlay'
+import { initBackgroundAppearance } from './background-appearance'
+import { initWindowOrderGuard } from './window-order-guard'
 import './transcription'
 import './window-resize'
 import { createWindow } from './main-window'
@@ -101,9 +111,16 @@ app.whenReady().then(() => {
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+    window.once('closed', () => {
+      if (window === global.mainWindow) shutdownActiveRequests()
+    })
   })
 
   createWindow()
+  initNativeOverlay(triggerNativeAction, revealMainWindow)
+  initCaptureController()
+  initBackgroundAppearance()
+  initWindowOrderGuard(getWindowOrderTarget, repairWindowOrder)
 
   // One-off capture benchmark (see take-screenshot.ts). It runs a few seconds
   // after the first launch, never more than once, so the numbers come from a
@@ -182,5 +199,6 @@ app.on('before-quit', (event) => {
   // The second pass through here is the quit we asked for once the writes landed.
   if (recordFlushed) return
   event.preventDefault()
+  shutdownActiveRequests()
   flushInterviewRecord().finally(() => app.quit())
 })

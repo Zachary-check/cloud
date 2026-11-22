@@ -80,7 +80,6 @@ export type RecordRenameResult =
 const pendingTurns = new Map<string, PendingTurn>()
 
 /** Sources of the newest turn; a turn may publish them either side of opening. */
-let openSources: string[] = []
 
 /** Where the settings said to write. Blank means "use the default folder". */
 let recordDir = ''
@@ -129,21 +128,16 @@ export async function prepareRecordSession(): Promise<InterviewRecordSessionInfo
   return { name: current.name, dir: current.dir }
 }
 
-/**
- * Called wherever knowledge sources are broadcast. Nothing is recorded here —
- * it only keeps `openSources` current for a turn that is opening or already open.
- */
-export function noteRecordSources(sources: string[]): void {
-  openSources = [...sources]
-  for (const turn of pendingTurns.values()) {
-    turn.sources = [...sources]
-  }
+/** An interrupted turn keeps the sources from its original request. */
+export function noteRecordSources(id: string, sources: string[]): void {
+  const turn = pendingTurns.get(id)
+  if (turn) turn.sources = [...sources]
 }
 
 export function beginRecordedTurn(id: string, kind: InterviewTurnKind, question: string): void {
   if (sealed || discarded) return
   recordedTurns += 1
-  pendingTurns.set(id, { kind, question, answer: '', at: new Date(), sources: [...openSources] })
+  pendingTurns.set(id, { kind, question, answer: '', at: new Date(), sources: [] })
 }
 
 /**

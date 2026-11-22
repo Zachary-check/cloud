@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { nativeEnvironment } from './capture/native-environment'
 import { join } from 'node:path'
 
 export interface WindowsScreenshot {
@@ -110,7 +111,13 @@ export function takeWindowsScreenshot(width: number, height: number): Promise<Wi
         '-EncodedCommand',
         Buffer.from(script, 'utf16le').toString('base64')
       ],
-      { windowsHide: true, timeout: 15000, maxBuffer: 32 * 1024 * 1024, encoding: 'utf8' },
+      {
+        windowsHide: true,
+        timeout: 15000,
+        maxBuffer: 32 * 1024 * 1024,
+        encoding: 'utf8',
+        env: nativeEnvironment()
+      },
       (error, stdout) => {
         if (error) {
           reject(new Error(`Windows screenshot process failed: ${error.code ?? error.name}`))
